@@ -3,189 +3,220 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Omni-Archive Pro: Global Search & Temporal Sync</title>
+  <title>WAR ROOM // GLOBAL INTELLIGENCE NODE</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
     :root {
-      --bg: #030712;
-      --panel: #111827;
-      --accent: #60a5fa;
-      --text: #f9fafb;
-      --muted: #9ca3af;
-      --border: rgba(255, 255, 255, 0.08);
-      --glass: rgba(31, 41, 55, 0.5);
+      --bg: #050505;
+      --panel: #0a0a0c;
+      --accent: #00f2ff; /* Cyber Cyan */
+      --warn: #ff3e3e;   /* Alert Red */
+      --intel: #00ff41;  /* Matrix Green */
+      --border: #1a1a1f;
+      --text: #d1d1d6;
     }
 
-    * { box-sizing: border-box; transition: all 0.2s ease-out; }
-    body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; display: flex; height: 100vh; overflow: hidden; }
-    
-    /* Sidebar */
-    .sidebar { width: 420px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); z-index: 100; box-shadow: 20px 0 50px rgba(0,0,0,0.5); }
-    .header { padding: 24px; border-bottom: 1px solid var(--border); background: #0f172a; }
-    .search-box { position: relative; margin-top: 15px; }
-    #globalSearch { width: 100%; padding: 12px 40px 12px 15px; background: #000; border: 1px solid var(--accent); border-radius: 8px; color: #fff; font-size: 14px; outline: none; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2); }
-    
-    .content { flex: 1; overflow-y: auto; padding: 20px; background: linear-gradient(to bottom, #111827, #030712); }
-    
-    /* Globe Section */
-    #globe-wrapper { flex: 1; position: relative; }
-    #info-overlay { position: absolute; top: 20px; right: 20px; background: var(--glass); backdrop-filter: blur(12px); padding: 10px 20px; border-radius: 30px; border: 1px solid var(--border); font-size: 12px; pointer-events: none; }
+    * { box-sizing: border-box; font-family: 'JetBrains Mono', monospace; }
+    body { margin: 0; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
 
-    /* Results */
-    .card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 20px; border-radius: 12px; margin-bottom: 15px; border-left: 2px solid transparent; }
-    .card:hover { border-left-color: var(--accent); background: rgba(255,255,255,0.05); transform: translateX(5px); }
-    .tag { font-size: 10px; padding: 4px 10px; border-radius: 5px; text-transform: uppercase; font-weight: 800; display: inline-block; margin-bottom: 12px; letter-spacing: 0.5px; }
-    .tag-event { background: #ef4444; color: white; }
-    .tag-wiki { background: #3b82f6; color: white; }
-    .tag-news { background: #10b981; color: white; }
+    /* Left Console */
+    .console { width: 480px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); z-index: 100; box-shadow: 10px 0 50px rgba(0,0,0,1); }
+    .status-header { padding: 25px; background: #000; border-bottom: 2px solid var(--border); }
+    .glitch-title { color: var(--accent); font-size: 18px; font-weight: 900; letter-spacing: 2px; margin: 0; text-transform: uppercase; }
     
-    .btn { display: block; width: 100%; text-align: center; background: #1e293b; color: white; text-decoration: none; padding: 10px; border-radius: 6px; font-size: 13px; margin-top: 15px; border: 1px solid var(--border); }
-    .btn:hover { background: var(--accent); color: #000; font-weight: bold; }
+    .search-input { width: 100%; background: #0f0f12; border: 1px solid var(--border); color: var(--intel); padding: 15px; font-size: 12px; outline: none; margin-top: 15px; border-radius: 2px; }
+    .search-input:focus { border-color: var(--accent); box-shadow: 0 0 10px rgba(0, 242, 255, 0.2); }
 
-    /* Timeline Slider */
-    .timeline { margin-top: 20px; }
-    input[type=range] { width: 100%; cursor: pointer; accent-color: var(--accent); }
+    .feed { flex: 1; overflow-y: auto; padding: 20px; scrollbar-width: none; background: linear-gradient(to bottom, #0a0a0c, #050505); }
+    
+    /* Intelligence Item */
+    .intel-node { border-left: 2px solid var(--accent); background: rgba(255,255,255,0.02); margin-bottom: 20px; padding: 15px; position: relative; transition: 0.2s; border-radius: 0 4px 4px 0; }
+    .intel-node:hover { background: rgba(0, 242, 255, 0.05); transform: translateX(5px); }
+    .intel-meta { font-size: 9px; color: var(--muted); margin-bottom: 8px; display: flex; justify-content: space-between; }
+    .intel-header { font-size: 14px; font-weight: bold; color: #fff; margin-bottom: 8px; }
+    .intel-body { font-size: 11px; line-height: 1.6; color: #a1a1aa; }
+    
+    .view-btn { font-size: 10px; color: var(--accent); border: 1px solid var(--accent); padding: 4px 8px; margin-top: 12px; display: inline-block; text-decoration: none; text-transform: uppercase; }
+
+    /* Globe Viewport */
+    #viewport { flex: 1; position: relative; overflow: hidden; }
+    .hud { position: absolute; padding: 20px; pointer-events: none; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+    .hud-top { display: flex; justify-content: space-between; }
+    .hud-box { background: rgba(0,0,0,0.8); border: 1px solid var(--border); padding: 10px 15px; font-size: 10px; color: var(--intel); backdrop-filter: blur(5px); }
+    
+    /* Timeline Control */
+    .timeline-wrap { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 500px; text-align: center; }
+    .year-readout { font-size: 24px; font-weight: bold; color: var(--accent); margin-bottom: 10px; text-shadow: 0 0 15px rgba(0,242,255,0.5); }
+    input[type=range] { width: 100%; height: 4px; background: #1a1a1f; appearance: none; outline: none; cursor: pointer; }
+    input[type=range]::-webkit-slider-thumb { appearance: none; width: 15px; height: 15px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 10px var(--accent); }
+
+    /* Alert Overlay */
+    #alert-msg { color: var(--warn); display: none; }
   </style>
 </head>
 <body>
 
-<div class="sidebar">
-  <div class="header">
-    <h1 style="margin:0; font-size: 20px; font-weight: 900; color: var(--accent);">OMNI-ARCHIVE PRO</h1>
-    <div class="search-box">
-      <input type="text" id="globalSearch" placeholder="Search event (e.g. 'WWII', 'Jerusalem')..." />
-      <span style="position:absolute; right:15px; top:12px; opacity:0.5;">🔍</span>
+<div class="console">
+  <div class="status-header">
+    <div class="status-line" style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:10px;">
+      <span>ID: KING_OF_WORLD_01</span>
+      <span id="live-clock">00:00:00 UTC</span>
     </div>
-    <div class="timeline">
-      <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-bottom:5px;">
-        <span>3000 BCE</span>
-        <span id="yearDisplay" style="color:var(--accent); font-weight:bold;">2026 CE</span>
-        <span>FUTURE</span>
-      </div>
-      <input type="range" id="timeSlider" min="-3000" max="2050" value="2026" />
-    </div>
+    <h1 class="glitch-title">Global Command Node</h1>
+    <input type="text" id="masterSearch" class="search-input" placeholder="> INPUT COORDINATES OR TARGET NAME..." />
+    <div style="margin-top:10px; font-size:10px; opacity:0.6;" id="status-text">SYSTEM: STANDBY</div>
   </div>
-  
-  <div class="content" id="feed">
-    <div style="text-align:center; padding:40px; color:var(--muted);">
-      <h3>Awaiting Target...</h3>
-      <p style="font-size:13px;">Search an event above or click a coordinate on the globe to begin the sequence.</p>
-    </div>
-  </div>
+  <div class="feed" id="intel-feed"></div>
 </div>
 
-<div id="globe-wrapper">
-  <div id="globe-div"></div>
-  <div id="info-overlay">SYSTEM STATUS: OPTIMAL // SYNCING SATELLITES</div>
+<div id="viewport">
+  <div id="globe-container"></div>
+  
+  <div class="hud">
+    <div class="hud-top">
+      <div class="hud-box">
+        SENSOR NET: ACTIVE<br/>
+        ENCRYPTION: AES-256<br/>
+        <span id="alert-msg">!! DATA BREACH DETECTED !!</span>
+      </div>
+      <div class="hud-box" style="text-align:right;">
+        LAT: <span id="hud-lat">0.00</span><br/>
+        LNG: <span id="hud-lng">0.00</span><br/>
+        ALT: 1.5R
+      </div>
+    </div>
+    
+    <div class="timeline-wrap">
+      <div class="year-readout" id="year-readout">2026 CE</div>
+      <input type="range" id="timeSlider" min="-2500" max="2026" value="2026" />
+    </div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/three"></script>
 <script src="https://unpkg.com/globe.gl"></script>
 
 <script>
-  // High-Value Seed Data
-  const ARCHIVE_SEEDS = [
-    { name: 'World War II', lat: 52.52, lng: 13.40, year: 1939, desc: 'Global conflict involving the vast majority of the world\'s countries.', link: 'https://en.wikipedia.org/wiki/World_War_II' },
-    { name: 'Siege of Jerusalem', lat: 31.76, lng: 35.21, year: 70, desc: 'The decisive event of the First Jewish–Roman War.', link: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(70_CE)' },
-    { name: 'Great Pyramid Completion', lat: 29.97, lng: 31.13, year: -2560, desc: 'Completion of the oldest of the Seven Wonders of the Ancient World.', link: 'https://en.wikipedia.org/wiki/Great_Pyramid_of_Giza' },
-    { name: 'Battle of Gettysburg', lat: 39.82, lng: -77.23, year: 1863, desc: 'Turning point of the American Civil War.', link: 'https://en.wikipedia.org/wiki/Battle_of_Gettysburg' }
+  const state = { year: 2026, world: null };
+  const feed = document.getElementById('intel-feed');
+  const slider = document.getElementById('timeSlider');
+  const readout = document.getElementById('year-readout');
+
+  // Core Intelligence Events
+  const WAR_RECORDS = [
+    { title: "Roman Sack of Jerusalem", lat: 31.76, lng: 35.21, year: 70, summary: "Total destruction of the Second Temple by Roman forces under Titus." },
+    { title: "D-Day Landings", lat: 49.37, lng: -0.87, year: 1944, summary: "Allied invasion of Normandy; largest seaborne invasion in history." },
+    { title: "Fall of Constantinople", lat: 41.00, lng: 28.97, year: 1453, summary: "Ottoman Empire captures the Byzantine capital, ending the Roman Empire." }
   ];
 
-  const state = { year: 2026, world: null };
-  const feed = document.getElementById('feed');
-  const slider = document.getElementById('timeSlider');
-  const yearDisp = document.getElementById('yearDisplay');
+  function init() {
+    state.world = Globe()(document.getElementById('globe-container'))
+      .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+      .backgroundColor('#050505')
+      .ringColor(() => '#00f2ff')
+      .ringMaxRadius(3)
+      .ringPropagationSpeed(1.5)
+      .onGlobeClick(({ lat, lng }) => {
+        document.getElementById('hud-lat').textContent = lat.toFixed(4);
+        document.getElementById('hud-lng').textContent = lng.toFixed(4);
+        executeWarRoomAudit(lat, lng);
+      });
 
-  // Initialize Globe
-  state.world = Globe()(document.getElementById('globe-div'))
-    .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
-    .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
-    .backgroundColor('#030712')
-    .pointsData(ARCHIVE_SEEDS)
-    .pointLabel('name')
-    .pointColor(() => '#60a5fa')
-    .pointRadius(0.6)
-    .onGlobeClick(({ lat, lng }) => {
-      state.world.pointOfView({ lat, lng, altitude: 1.5 }, 1000);
-      fetchCompleteProfile(lat, lng);
-    });
+    // Load initial pins
+    state.world.ringsData(WAR_RECORDS.filter(r => r.year <= state.year));
+    
+    setInterval(updateClock, 1000);
+    window.addEventListener('resize', () => state.world.width(window.innerWidth - 480).height(window.innerHeight));
+  }
 
-  // Global Search Logic
-  document.getElementById('globalSearch').addEventListener('keypress', async (e) => {
-    if (e.key === 'Enter') {
-      const query = e.target.value.toLowerCase();
-      const match = ARCHIVE_SEEDS.find(s => s.name.toLowerCase().includes(query));
+  async function executeWarRoomAudit(lat, lng) {
+    document.getElementById('status-text').textContent = "SYSTEM: SCANNING COORDINATES...";
+    feed.innerHTML = '<p style="color:var(--accent)">> DECRYPTING LOCAL DATA STREAMS...</p>';
+
+    try {
+      // 1. Identification (Reverse Geocode)
+      const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`)
+        .then(r => r.json());
+      const locName = geo.address.city || geo.address.country || "RESTRICTED AREA";
       
-      if (match) {
-        // If it's a known historical seed
-        updateTimeline(match.year);
-        state.world.pointOfView({ lat: match.lat, lng: match.lng, altitude: 1.2 }, 2000);
-        fetchCompleteProfile(match.lat, match.lng, match.name);
-      } else {
-        // Search Wikipedia/Geocode for unknown locations
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`).then(r => r.json());
-        if (res[0]) {
-          state.world.pointOfView({ lat: parseFloat(res[0].lat), lng: parseFloat(res[0].lon), altitude: 1.5 }, 2000);
-          fetchCompleteProfile(res[0].lat, res[0].lon);
+      feed.innerHTML = `<h2 style="color:#fff; margin-bottom:5px;">TARGET: ${locName.toUpperCase()}</h2>
+                        <div style="font-size:10px; color:var(--intel); margin-bottom:20px;">[ VALIDATED COORDINATES ]</div>`;
+
+      // 2. Wikipedia Geosearch (The most reliable for historical records)
+      const wikiRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=5&format=json&origin=*`)
+        .then(r => r.json());
+
+      if (wikiRes.query?.geosearch) {
+        for (let item of wikiRes.query.geosearch) {
+          const detail = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`)
+            .then(r => r.json());
+          addIntelNode("ARCHIVE", detail.title, detail.extract, detail.content_urls.desktop.page);
         }
+      }
+
+      // 3. News Dispatch (If modern era)
+      if (state.year > 2010) {
+        const news = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(locName)}&mode=artlist&format=json&maxrecords=3`)
+          .then(r => r.ok ? r.json() : {articles: []});
+        
+        if (news.articles) {
+          news.articles.forEach(a => {
+            addIntelNode("SIGNAL", a.title, "Live news intercept from local transmission towers.", a.url);
+          });
+        }
+      }
+
+      document.getElementById('status-text').textContent = "SYSTEM: DATA AGGREGATED.";
+
+    } catch (e) {
+      console.error(e);
+      document.getElementById('status-text').textContent = "SYSTEM: UPLINK TIMEOUT";
+      feed.innerHTML = '<div style="color:var(--warn)">> ERR: ENCRYPTION HANDSHAKE FAILED. RE-SCANNING...</div>';
+    }
+  }
+
+  function addIntelNode(type, title, text, link) {
+    const node = document.createElement('div');
+    node.className = 'intel-node';
+    node.innerHTML = `
+      <div class="intel-meta"><span>TYPE: ${type}</span><span>REF: ${Math.random().toString(16).substr(2,6).toUpperCase()}</span></div>
+      <div class="intel-header">${title}</div>
+      <div class="intel-body">${text}</div>
+      <a href="${link}" target="_blank" class="view-btn">Full Access</a>
+    `;
+    feed.appendChild(node);
+  }
+
+  function updateClock() {
+    const d = new Date();
+    document.getElementById('live-clock').textContent = d.toISOString().split('T')[1].split('.')[0] + " UTC";
+  }
+
+  slider.oninput = (e) => {
+    state.year = parseInt(e.target.value);
+    readout.textContent = state.year < 0 ? Math.abs(state.year) + " BCE" : state.year + " CE";
+    
+    // Texture Shift
+    const tex = state.year < 1850 ? '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg' : '//unpkg.com/three-globe/example/img/earth-dark.jpg';
+    state.world.globeImageUrl(tex);
+
+    // Update Rings
+    state.world.ringsData(WAR_RECORDS.filter(r => r.year <= state.year));
+  };
+
+  document.getElementById('masterSearch').onkeypress = async (e) => {
+    if (e.key === 'Enter') {
+      const q = e.target.value;
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`).then(r => r.json());
+      if (res[0]) {
+        state.world.pointOfView({ lat: parseFloat(res[0].lat), lng: parseFloat(res[0].lon), altitude: 1.5 }, 2000);
+        executeWarRoomAudit(res[0].lat, res[0].lon);
       }
     }
-  });
+  };
 
-  function updateTimeline(y) {
-    state.year = parseInt(y);
-    slider.value = state.year;
-    yearDisp.textContent = state.year < 0 ? Math.abs(state.year) + " BCE" : state.year + " CE";
-    
-    // Texture Swap logic based on year
-    const tex = state.year < 1880 ? '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg' : '//unpkg.com/three-globe/example/img/earth-night.jpg';
-    state.world.globeImageUrl(tex);
-  }
-
-  async function fetchCompleteProfile(lat, lng, label = null) {
-    feed.innerHTML = '<div style="color:var(--accent); padding:20px;">Synchronizing with Archive...</div>';
-    
-    try {
-      let name = label;
-      if (!name) {
-        const g = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`).then(r => r.json());
-        name = g.address.city || g.address.country || "Oceanic Region";
-      }
-
-      feed.innerHTML = `<h2 style="margin:0;">${name}</h2><p style="font-size:12px; color:var(--muted)">Coord: ${parseFloat(lat).toFixed(3)}, ${parseFloat(lng).toFixed(3)}</p><br/>`;
-
-      // Parallel Fetch: History & Modern News
-      const [wiki, news] = await Promise.all([
-        fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=3&format=json&origin=*`).then(r => r.json()),
-        fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(name)}&mode=artlist&format=json&maxrecords=3`).then(r => r.json())
-      ]);
-
-      // Render Results
-      if (wiki.query?.geosearch) {
-        for (let item of wiki.query.geosearch) {
-          const detail = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`).then(r => r.json());
-          addCard("tag-wiki", "Archive Record", detail.title, detail.extract, detail.content_urls.desktop.page);
-        }
-      }
-
-      if (news.articles) {
-        news.articles.forEach(a => {
-          addCard("tag-news", "Global Dispatch", a.title, "Live news coverage recorded at this location.", a.url);
-        });
-      }
-
-    } catch(e) { feed.innerHTML = "Access Denied // Database Offline."; }
-  }
-
-  function addCard(cls, type, title, body, link) {
-    const d = document.createElement('div');
-    d.className = 'card';
-    d.innerHTML = `<span class="tag ${cls}">${type}</span><h3>${title}</h3><p style="font-size:13px; color:var(--muted);">${body}</p><a href="${link}" target="_blank" class="btn">View Full Intelligence</a>`;
-    feed.appendChild(d);
-  }
-
-  slider.oninput = (e) => updateTimeline(e.target.value);
-  window.addEventListener('resize', () => state.world.width(window.innerWidth - 420).height(window.innerHeight));
-
+  init();
 </script>
 </body>
 </html>
