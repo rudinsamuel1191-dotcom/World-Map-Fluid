@@ -1,24 +1,25 @@
-<!doctype html>
+ <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>WAR ROOM // GOD'S EYE v2.0</title>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.45.1"></script>
+    <title>WAR ROOM // GOD'S EYE</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/globe.gl@2.32.2/dist/globe.gl.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
         :root { --bg: #020205; --accent: #00f2ff; --panel: rgba(10, 10, 15, 0.9); --intel: #00ff41; --border: #1a1a2e; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
         #globe-viz { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        .sidebar { pointer-events: auto; position: absolute; left: 20px; top: 20px; bottom: 20px; width: 380px; background: var(--panel); border-right: 2px solid var(--accent); backdrop-filter: blur(10px); display: flex; flex-direction: column; }
+        .sidebar { pointer-events: auto; position: absolute; left: 20px; top: 20px; bottom: 20px; width: 380px; background: var(--panel); border-right: 2px solid var(--accent); backdrop-filter: blur(10px); display: flex; flex-direction: column; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
         .header { padding: 20px; background: #000; border-bottom: 1px solid var(--border); }
         .feed { flex: 1; overflow-y: auto; padding: 20px; scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
         .intel-card { background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); padding: 12px; margin-bottom: 15px; font-size: 11px; transition: 0.3s; }
         .intel-card:hover { background: rgba(0, 242, 255, 0.1); }
-        .intel-card h4 { margin: 0 0 5px 0; color: var(--accent); text-transform: uppercase; }
-        .intel-card a { color: var(--intel); text-decoration: none; font-size: 9px; border: 1px solid var(--intel); padding: 2px 5px; margin-top: 5px; display: inline-block; }
-        .hud-stats { position: absolute; right: 20px; top: 20px; text-align: right; color: var(--intel); font-size: 10px; padding: 10px; border: 1px solid var(--border); background: rgba(0,0,0,0.7); }
+        .intel-card h4 { margin: 0 0 5px 0; color: var(--accent); text-transform: uppercase; font-size: 12px; }
+        .intel-card p { margin: 5px 0; color: #ccc; line-height: 1.4; }
+        .intel-card a { color: var(--intel); text-decoration: none; font-size: 10px; border: 1px solid var(--intel); padding: 3px 6px; margin-top: 8px; display: inline-block; background: rgba(0,0,0,0.4); }
+        .hud-stats { pointer-events: auto; position: absolute; right: 20px; top: 20px; text-align: right; color: var(--intel); font-size: 10px; padding: 12px; border: 1px solid var(--border); background: rgba(0,0,0,0.8); }
         .timeline-ctrl { position: absolute; bottom: 30px; left: 420px; right: 40px; pointer-events: auto; background: var(--panel); padding: 20px; border: 1px solid var(--border); }
         input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
         .loading-shimmer { color: var(--accent); font-style: italic; animation: blink 1s infinite; }
@@ -36,14 +37,14 @@
             <h2 style="margin: 0; font-size: 18px; letter-spacing: 2px;">GOD'S EYE</h2>
         </div>
         <div class="feed" id="feed">
-            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> SELECT TEMPORAL COORDINATES<br>> CLICK GLOBE TO SCAN</div>
+            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> SELECT TEMPORAL COORDINATES<br>> CLICK GLOBE TO SCAN TARGET</div>
         </div>
     </div>
 
     <div class="hud-stats">
         DATE: <span id="hud-date">2026.03.23</span><br>
         COORDS: <span id="hud-coords">GLOBAL</span><br>
-        STATUS: <span style="color:#0f0">READY</span>
+        STATUS: <span id="sys-status" style="color:#0f0">READY</span>
     </div>
 
     <div class="timeline-ctrl">
@@ -52,19 +53,25 @@
             <span id="year-display" style="color:var(--accent); font-weight:bold;">2026 CE</span>
             <span>LIVE INTEL</span>
         </div>
-        <input type="range" id="year-slider" min="1900" max="2026" value="2026" oninput="updateYear(this.value)">
+        <input type="range" id="year-slider" min="1950" max="2026" value="2026" oninput="updateYear(this.value)">
     </div>
 </div>
 
 <script>
     let world;
     let selectedYear = 2026;
-    const CORS_PROXY = "https://corsproxy.io/?";
+    
+    // Fallback list of proxies for GitHub Pages
+    const PROXIES = [
+        "https://corsproxy.io/?",
+        "https://api.allorigins.win/raw?url="
+    ];
+    let activeProxyIndex = 0;
 
     function initGlobe() {
         world = Globe()(document.getElementById('globe-viz'))
-            .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
-            .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+            .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg')
+            .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
             .backgroundColor('#020205')
             .showAtmosphere(true)
             .atmosphereColor('#00f2ff')
@@ -93,78 +100,112 @@
 
     async function triggerAudit(lat, lng) {
         document.getElementById('hud-coords').textContent = `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+        document.getElementById('sys-status').textContent = "SCANNING";
+        document.getElementById('sys-status').style.color = "#ff0";
+        
         const feed = document.getElementById('feed');
         feed.innerHTML = `<div class="loading-shimmer">> INTERCEPTING DATA FOR YEAR ${selectedYear}...</div>`;
 
         try {
-            // 1. Get City Name
+            // 1. Reverse Geocoding via OSM (Requires https://)
             const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
             const geo = await geoRes.json();
-            const city = geo.address.city || geo.address.town || geo.address.state || "Uncharted Sector";
+            const city = geo.address.city || geo.address.town || geo.address.village || geo.address.state || "Neutral Zone";
             
-            feed.innerHTML = `<h3 style="color:var(--accent); margin-bottom:20px;">${city.toUpperCase()}</h3>`;
+            feed.innerHTML = `<h3 style="color:var(--accent); margin-bottom:20px; font-size:16px;">${city.toUpperCase()}</h3>`;
 
-            // 2. Fetch History (Wikipedia Geosearch)
-            const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=5&format=json&origin=*`;
+            // 2. Fetch Wikipedia History (Using explicit origin=* for GitHub Pages)
+            const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=4&format=json&origin=*`;
             const wikiRes = await fetch(wikiUrl);
             const wikiData = await wikiRes.json();
 
-            if (wikiData.query?.geosearch) {
-                feed.innerHTML += `<div style="font-size:9px; color:#666; margin-bottom:10px;">HISTORICAL LOGS:</div>`;
+            if (wikiData.query?.geosearch?.length) {
+                feed.innerHTML += `<div style="font-size:9px; color:#666; margin-bottom:10px;">TEMPORAL INTEL RECORDS:</div>`;
+                
                 for (let item of wikiData.query.geosearch) {
                     const sRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}?origin=*`);
                     const s = await sRes.json();
                     
-                    // Filter: Only show if it matches the general era (simple simulation)
                     feed.innerHTML += `
                         <div class="intel-card">
                             <h4>${s.title}</h4>
-                            <p>${s.extract || 'No archival text found.'}</p>
-                            <a href="${s.content_urls?.desktop?.page || '#'}" target="_blank">DECRYPT FILE</a>
+                            <p>${s.extract ? s.extract.substring(0, 160) + "..." : "No archival summary."}</p>
+                            <a href="${s.content_urls?.desktop?.page || '#'}" target="_blank">[ OPEN ARCHIVE ]</a>
                         </div>`;
                 }
             }
 
-            // 3. Fetch News (Only if Year is Recent, otherwise search archives)
-            if (selectedYear >= 2024) {
-                feed.innerHTML += `<div style="font-size:9px; color:#666; margin:20px 0 10px 0;">LIVE NEWS FEED:</div>`;
+            // 3. Live News Feed (Filtered by Year)
+            if (selectedYear >= 2025) {
+                feed.innerHTML += `<div style="font-size:9px; color:#666; margin:20px 0 10px 0;">BROADCAST INTERCEPT:</div>`;
                 const news = await fetchNews(city);
                 feed.innerHTML += news;
             } else {
-                feed.innerHTML += `<div class="intel-card" style="border-color:#ff0;">
-                    <h4>TEMPORAL ARCHIVE NOTICE</h4>
-                    <p>Live digital news feeds are unavailable for the year ${selectedYear}. Displaying static historical records only.</p>
-                </div>`;
+                feed.innerHTML += `
+                    <div class="intel-card" style="border-color:#ff0;">
+                        <h4>ARCHIVE LOCKOUT</h4>
+                        <p>Live digital news interceptions are unavailable for ${selectedYear}. Displaying static historical data only.</p>
+                    </div>`;
             }
+            
+            document.getElementById('sys-status').textContent = "STABLE";
+            document.getElementById('sys-status').style.color = "#0f0";
 
         } catch (err) {
-            feed.innerHTML = `<div style="color:red;">> UPLINK FAILED: CONNECTION TIMEOUT</div>`;
+            console.error(err);
+            document.getElementById('sys-status').textContent = "TIMEOUT";
+            document.getElementById('sys-status').style.color = "#f00";
+            
+            feed.innerHTML += `
+                <div class="intel-card" style="border-color:red;">
+                    <h4>SIGNAL ERROR</h4>
+                    <p>The network connection timed out or blocked the request. Try clicking on a coastal city or verify repository settings.</p>
+                </div>`;
         }
     }
 
     async function fetchNews(city) {
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(city)}&hl=en-US&gl=US&ceid=US:en`;
+        
+        // Attempt first proxy
         try {
-            const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(city)}&hl=en-US&gl=US&ceid=US:en`;
-            const res = await fetch(CORS_PROXY + encodeURIComponent(rssUrl));
+            const res = await fetch(PROXIES[activeProxyIndex] + encodeURIComponent(rssUrl));
             const text = await res.text();
-            const xml = new DOMParser().parseFromString(text, "text/xml");
+            
+            // If allorigins wrapper is used, clean it
+            let xmlText = text;
+            if (activeProxyIndex === 1) {
+                const json = JSON.parse(text);
+                xmlText = json.contents;
+            }
+
+            const xml = new DOMParser().parseFromString(xmlText, "text/xml");
             const items = xml.querySelectorAll("item");
+            
             let html = "";
             for (let i = 0; i < 3; i++) {
                 if (!items[i]) break;
                 html += `
                     <div class="intel-card" style="border-left: 3px solid #ff0;">
                         <h4 style="color:#ff0;">${items[i].querySelector("title").textContent}</h4>
-                        <a href="${items[i].querySelector("link").textContent}" target="_blank">READ REPORT</a>
+                        <a href="${items[i].querySelector("link").textContent}" target="_blank">[ ACCESS REPORT ]</a>
                     </div>`;
             }
-            return html || "No recent news found.";
+            return html || "No recent broadcasts found.";
         } catch (e) {
-            return "Unable to establish news link.";
+            // Shift to backup proxy for next time
+            activeProxyIndex = (activeProxyIndex + 1) % PROXIES.length;
+            
+            return `
+                <div class="intel-card" style="border-color:#ff0;">
+                    <h4>UPLINK DISTORTION</h4>
+                    <p>Standard automated intercept failed. Manual connection required.</p>
+                    <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank">[ LAUNCH EXTERNAL INTEL ]</a>
+                </div>`;
         }
     }
 
     initGlobe();
 </script>
 </body>
-</html>
+</html>   
