@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8" />
     <title>WAR ROOM // GOD'S EYE</title>
-    <script src="https://unpkg.com/three@0.169.0/build/three.min.js"></script>
-    <script src="https://unpkg.com/globe.gl@2.45.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.45.1"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
         
@@ -61,7 +61,7 @@
             <input type="text" id="search" placeholder="SEARCH CITY / COORDS (e.g. Jerusalem)" onkeypress="handleSearch(event)">
         </div>
         <div class="feed" id="feed">
-            <div style="opacity: 0.6; text-align: center; margin-top: 80px; font-size: 12px;">// STANDING BY FOR TARGET ACQUISITION...<br>CLICK ANYWHERE ON THE GLOBE</div>
+            <div style="opacity: 0.6; text-align: center; margin-top: 80px; font-size: 12px;">// STANDING BY FOR TARGET ACQUISITION...<br>CLICK ANYWHERE ON THE GLOBE OR SEARCH</div>
         </div>
     </div>
 
@@ -88,13 +88,13 @@
     const feed = document.getElementById('feed');
     let currentCity = '';
 
-    // CORS proxy for RSS (100% free, no key, works globally)
+    // Free CORS proxy for RSS feeds (works globally, no key needed)
     const CORS_PROXY = 'https://corsproxy.io/?';
 
     function initGlobe() {
         world = Globe()(document.getElementById('globe-viz'))
-            .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg')
-            .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+            .globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe@2.45.1/example/img/earth-dark.jpg')
+            .bumpImageUrl('https://cdn.jsdelivr.net/npm/three-globe@2.45.1/example/img/earth-topology.png')
             .backgroundColor('#020205')
             .showAtmosphere(true)
             .atmosphereColor('#00f2ff')
@@ -106,14 +106,14 @@
                 auditLocation(lat, lng);
             });
 
-        // God's Eye always-on rotation
+        // Enable gentle auto-rotation for "God's Eye" feel
         world.controls().autoRotate = true;
         world.controls().autoRotateSpeed = 0.35;
 
-        // Initial Jerusalem view (as in original)
-        world.pointOfView({ lat: 31.7, lng: 35.2, altitude: 2.2 });
+        // Initial view centered on Jerusalem (your location)
+        world.pointOfView({ lat: 31.7683, lng: 35.2137, altitude: 2.2 });
 
-        // Responsive
+        // Responsive resize
         window.addEventListener('resize', () => {
             world.width(window.innerWidth).height(window.innerHeight);
         });
@@ -127,7 +127,7 @@
         let countryName = "";
 
         try {
-            // Reverse geocoding (free, global, no key)
+            // Reverse geocoding via Nominatim (free, no key, global)
             const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10`);
             const geo = await geoRes.json();
             cityName = geo.address.city || geo.address.town || geo.address.state || geo.address.country || "UNKNOWN ZONE";
@@ -136,7 +136,7 @@
 
             feed.innerHTML = `<h3 style="margin:8px 0 12px 0;color:var(--accent);font-size:15px;">${cityName.toUpperCase()} • ${countryName}</h3>`;
 
-            // === HISTORICAL / WIKIPEDIA CONTEXT (free, global) ===
+            // Historical context from Wikipedia
             feed.innerHTML += `<div style="color:#666;font-size:10px;margin-bottom:8px;">HISTORICAL ARCHIVES (Wikipedia)</div>`;
             
             const wikiRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=50000&gslimit=6&format=json&origin=*`);
@@ -151,7 +151,7 @@
                             <div class="intel-card">
                                 <h4>${summary.title}</h4>
                                 <div style="font-size:10.5px;line-height:1.35;">${summary.extract.substring(0, 220)}...</div>
-                                <a href="${summary.content_urls.desktop.page}" target="_blank">[ FULL ARCHIVE ]</a>
+                                <a href="${summary.content_urls?.desktop?.page || '#'}" target="_blank">[ FULL ARCHIVE ]</a>
                             </div>`;
                     } catch(e) {}
                 }
@@ -159,7 +159,7 @@
                 feed.innerHTML += `<div class="intel-card" style="opacity:0.7;">No nearby Wikipedia entries within 50 km radius.</div>`;
             }
 
-            // === LIVE CURRENT NEWS (Google News RSS via free public proxy) ===
+            // Live news via Google News RSS + proxy
             feed.innerHTML += `<div style="color:#666;font-size:10px;margin:18px 0 8px 0;border-top:1px solid var(--border);padding-top:12px;">LIVE GLOBAL NEWS • ${cityName.toUpperCase()}</div>`;
             
             const newsHTML = await fetchLiveNews(cityName);
@@ -167,11 +167,11 @@
 
         } catch (e) {
             console.error(e);
-            feed.innerHTML += `<div style="color:#f66;">> UPLINK PARTIAL • WIKIPEDIA / NEWS FEED TIMEOUT</div>`;
+            feed.innerHTML += `<div style="color:#f66;">> UPLINK PARTIAL FAILURE • CHECK CONSOLE</div>`;
         }
 
-        // Add glowing marker on globe
-        markers.push({ lat: lat, lng: lng, size: 0.35, color: '#ff0044' });
+        // Add persistent red marker on globe
+        markers.push({ lat, lng, size: 0.35, color: '#ff0044' });
         world.pointsData(markers)
             .pointAltitude(0.01)
             .pointColor(d => d.color)
@@ -184,7 +184,7 @@
             const proxyUrl = CORS_PROXY + encodeURIComponent(rssUrl);
             
             const res = await fetch(proxyUrl);
-            if (!res.ok) throw new Error('RSS failed');
+            if (!res.ok) throw new Error('RSS fetch failed');
             
             const xmlText = await res.text();
             const parser = new DOMParser();
@@ -195,8 +195,8 @@
             let count = 0;
             for (let item of items) {
                 if (count >= 5) break;
-                const title = item.querySelector("title").textContent;
-                const link = item.querySelector("link").textContent;
+                const title = item.querySelector("title")?.textContent || 'Untitled';
+                const link = item.querySelector("link")?.textContent || '#';
                 const pubDate = item.querySelector("pubDate") ? new Date(item.querySelector("pubDate").textContent).toLocaleDateString() : 'LIVE';
                 
                 html += `
@@ -207,25 +207,22 @@
                     </div>`;
                 count++;
             }
-            return html || `<div class="intel-card" style="opacity:0.7;">No recent headlines found for this location.</div>`;
+            return html || `<div class="intel-card" style="opacity:0.7;">No recent headlines found.</div>`;
         } catch (e) {
-            return `<div class="intel-card" style="color:#f66;opacity:0.8;">LIVE NEWS FEED TEMPORARILY OFFLINE • DIRECT LINK: <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank" style="color:#ff0;">OPEN GOOGLE NEWS</a></div>`;
+            return `<div class="intel-card" style="color:#f66;opacity:0.8;">LIVE NEWS OFFLINE • <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank" style="color:#ff0;">OPEN GOOGLE NEWS</a></div>`;
         }
     }
 
     function updateTime(val) {
-        const yearLabel = document.getElementById('year-label');
-        const displayDate = document.getElementById('cur-date');
-        
         const year = parseInt(val);
-        yearLabel.textContent = year < 0 ? `${Math.abs(year)} BCE` : `${year} CE`;
-        displayDate.textContent = year;
+        document.getElementById('year-label').textContent = year < 0 ? `${Math.abs(year)} BCE` : `${year} CE`;
+        document.getElementById('cur-date').textContent = year;
 
-        // Visual era change (historical vs modern texture)
+        // Era-based texture switch
         if (year < 1850) {
-            world.globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
+            world.globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe@2.45.1/example/img/earth-blue-marble.jpg');
         } else {
-            world.globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg');
+            world.globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe@2.45.1/example/img/earth-dark.jpg');
         }
     }
 
@@ -245,7 +242,7 @@
                     world.pointOfView({ lat, lng, altitude: 1.6 }, 1800);
                     auditLocation(lat, lng);
                 } else {
-                    feed.innerHTML = '<div style="color:#f66;">> NO MATCH FOUND IN DATABASE</div>';
+                    feed.innerHTML = '<div style="color:#f66;">> NO MATCH FOUND</div>';
                 }
             } catch(err) {
                 feed.innerHTML = '<div style="color:#f66;">> SEARCH UPLINK FAILED</div>';
@@ -253,7 +250,7 @@
         }
     }
 
-    // Initialize
+    // Start everything
     initGlobe();
 </script>
 </body>
