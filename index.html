@@ -1,166 +1,653 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>History Repeats Globe</title>
-
-<style>
-body {
-  margin:0;
-  font-family:Arial;
-  background:#020617;
-  color:white;
-}
-
-.container {
-  display:grid;
-  grid-template-columns:70% 30%;
-  height:100vh;
-}
-
-#globe {
-  width:100%;
-  height:100%;
-}
-
-.panel {
-  padding:15px;
-  overflow:auto;
-  background:#0f172a;
-}
-
-input, select, button {
-  padding:8px;
-  margin:5px 0;
-  width:100%;
-}
-
-.event {
-  background:#020617;
-  padding:10px;
-  margin:10px 0;
-  border-radius:8px;
-}
-</style>
-</head>
-
-<body>
-
-<div style="padding:10px;">
-  <h2>History Globe</h2>
-
-  <input id="search" placeholder="Search location..." />
-  
-  <input id="year" type="number" value="2026" />
-  
-  <select id="month"></select>
-  <select id="day"></select>
-</div>
-
-<div class="container">
-  <div id="globe"></div>
-
-  <div class="panel">
-    <h2 id="location">Click on globe</h2>
-    <div id="results"></div>
-  </div>
-</div>
-
-<script src="https://unpkg.com/three"></script>
-<script src="https://unpkg.com/globe.gl"></script>
-
-<script>
-
-const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-
-for(let i=1;i<=12;i++){
-  month.innerHTML += `<option value="${i}">${months[i-1]}</option>`
-}
-
-for(let i=1;i<=28;i++){
-  day.innerHTML += `<option value="${i}">${i}</option>`
-}
-
-function formatDate(){
-  return `${year.value}-${month.value}-${day.value}`
-}
-
-const globe = Globe()(document.getElementById('globe'))
-  .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
-
-globe.onGlobeClick(async ({lat,lng})=>{
-  loadLocation(lat,lng)
-})
-
-async function loadLocation(lat,lng){
-
-  location.innerText="Loading..."
-
-  const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
-  const geoData = await geo.json()
-
-  const place = geoData.display_name
-  location.innerText = place
-
-  loadData(place)
-}
-
-async function loadData(place){
-
-  results.innerHTML = "Loading..."
-
-  const yearVal = year.value
-
-  // NEWS (recent only)
-  if(yearVal >= 2017){
-    try{
-      const news = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${place}&mode=artlist&maxrecords=5&format=json`)
-      const data = await news.json()
-
-      if(data.articles && data.articles.length){
-        results.innerHTML = "<h3>News</h3>"
-        data.articles.forEach(a=>{
-          results.innerHTML += `
-          <div class="event">
-            <b>${a.title}</b><br/>
-            <a href="${a.url}" target="_blank">Source</a>
-          </div>`
-        })
-        return
-      }
-    }catch(e){}
-  }
-
-  // FALLBACK HISTORY
-  const wiki = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${place}`)
-  const wikiData = await wiki.json()
-
-  results.innerHTML = `
-    <h3>Historical Info</h3>
-    <div class="event">
-      <b>${wikiData.title}</b><br/>
-      ${wikiData.extract || "No data found"}
-      <br/>
-      <a href="${wikiData.content_urls?.desktop?.page}" target="_blank">Read more</a>
-    </div>
-  `
-}
-
-// SEARCH
-search.addEventListener("keypress", async (e)=>{
-  if(e.key==="Enter"){
-    const q = search.value
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
-    const data = await res.json()
-
-    if(data[0]){
-      loadLocation(data[0].lat,data[0].lon)
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>History Repeats Globe</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --panel-2: #111827;
+      --border: rgba(148, 163, 184, 0.18);
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
     }
-  }
-})
 
-</script>
+    * { box-sizing: border-box; }
 
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      min-height: 100vh;
+    }
+
+    .page {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 12px;
+      min-height: 100vh;
+      padding: 12px;
+    }
+
+    .topbar, .searchbar {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .topbar h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+    }
+
+    .search-row {
+      display: grid;
+      grid-template-columns: 1fr 140px;
+      gap: 12px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 68% 32%;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    #globe {
+      width: 100%;
+      height: 72vh;
+      min-height: 520px;
+    }
+
+    .globe-footer {
+      padding: 10px 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .panel {
+      padding: 14px;
+      max-height: calc(72vh + 44px);
+      overflow: auto;
+    }
+
+    .panel h2 {
+      margin: 0 0 6px;
+      font-size: 24px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #1f2937;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .chip.news { color: #86efac; }
+    .chip.history { color: #93c5fd; }
+    .chip.seed { color: #fde68a; }
+    .chip.error { color: #fca5a5; }
+
+    .item {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .item h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .item p {
+      margin: 8px 0 0;
+      line-height: 1.45;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    a { color: #93c5fd; }
+
+    @media (max-width: 1100px) {
+      .controls,
+      .search-row,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      #globe {
+        height: 55vh;
+        min-height: 420px;
+      }
+
+      .panel {
+        max-height: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <h1>History Repeats Globe</h1>
+      <p class="subtitle">Click the globe or search a place. Recent dates try news first. Older dates fall back to historical summaries.</p>
+
+      <div class="controls">
+        <div class="field">
+          <div class="label">Selected date</div>
+          <div id="dateDisplay" style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);">March 23, 2026 CE</div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="yearInput">Year</label>
+          <input id="yearInput" type="number" min="-4000" max="2026" value="2026" />
+        </div>
+
+        <div class="field">
+          <label class="label" for="monthSelect">Month</label>
+          <select id="monthSelect"></select>
+        </div>
+
+        <div class="field">
+          <label class="label" for="daySelect">Day</label>
+          <select id="daySelect"></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="searchbar">
+      <div class="search-row">
+        <div class="field">
+          <label class="label" for="searchInput">Search location</label>
+          <input id="searchInput" type="text" placeholder="Jerusalem, Paris, Tokyo, Kyiv..." />
+        </div>
+        <div class="field">
+          <label class="label">&nbsp;</label>
+          <button id="searchBtn" type="button">Search</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <div id="globe"></div>
+        <div class="globe-footer" id="globeStatus">Loading globe…</div>
+      </div>
+
+      <div class="card">
+        <div class="panel">
+          <h2 id="locationTitle">Click or search a location</h2>
+          <div class="meta" id="locationMeta">The panel will show news or history for the selected place.</div>
+          <div class="chips" id="chips"></div>
+          <div id="results"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/three"></script>
+  <script src="https://unpkg.com/globe.gl"></script>
+  <script>
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const seedEvents = [
+      {
+        title: 'Babylonian siege and destruction of Jerusalem',
+        country: 'Israel',
+        startYear: -589,
+        summary: 'Nebuchadnezzar II of Babylon besieged Jerusalem, and the city was destroyed in the debated 587/586 BCE window.',
+        sourceName: 'Wikipedia: Siege of Jerusalem (587 BC)',
+        sourceUrl: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(587_BC)'
+      },
+      {
+        title: 'Roman siege and destruction of Jerusalem',
+        country: 'Israel',
+        startYear: 70,
+        summary: 'Roman forces led by Titus captured Jerusalem during the First Jewish–Roman War and destroyed the Second Temple in 70 CE.',
+        sourceName: 'Wikipedia: Siege of Jerusalem (70 CE)',
+        sourceUrl: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(70_CE)'
+      },
+      {
+        title: 'Crusader conquest of Jerusalem',
+        country: 'Israel',
+        startYear: 1099,
+        summary: 'Crusader forces besieged and captured Jerusalem at the end of the First Crusade in July 1099.',
+        sourceName: 'Wikipedia: Siege of Jerusalem (1099)',
+        sourceUrl: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(1099)'
+      },
+      {
+        title: 'Battle of Jerusalem',
+        country: 'Israel',
+        startYear: 1917,
+        summary: 'British Empire forces captured Jerusalem from the Ottoman Empire during World War I.',
+        sourceName: 'Wikipedia: Battle of Jerusalem',
+        sourceUrl: 'https://en.wikipedia.org/wiki/Battle_of_Jerusalem'
+      },
+      {
+        title: 'Russian invasion of Ukraine',
+        country: 'Ukraine',
+        startYear: 2022,
+        summary: 'Russia launched a full-scale invasion of Ukraine on February 24, 2022.',
+        sourceName: 'Wikipedia: Russian invasion of Ukraine',
+        sourceUrl: 'https://en.wikipedia.org/wiki/Russian_invasion_of_Ukraine'
+      }
+    ];
+
+    const els = {
+      yearInput: document.getElementById('yearInput'),
+      monthSelect: document.getElementById('monthSelect'),
+      daySelect: document.getElementById('daySelect'),
+      dateDisplay: document.getElementById('dateDisplay'),
+      searchInput: document.getElementById('searchInput'),
+      searchBtn: document.getElementById('searchBtn'),
+      locationTitle: document.getElementById('locationTitle'),
+      locationMeta: document.getElementById('locationMeta'),
+      chips: document.getElementById('chips'),
+      results: document.getElementById('results'),
+      globeStatus: document.getElementById('globeStatus'),
+      globe: document.getElementById('globe')
+    };
+
+    const state = {
+      year: 2026,
+      month: 3,
+      day: 23,
+      world: null,
+      selected: null,
+      token: 0
+    };
+
+    function fillDateControls() {
+      for (let i = 1; i <= 12; i++) {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = monthNames[i - 1];
+        if (i === state.month) opt.selected = true;
+        els.monthSelect.appendChild(opt);
+      }
+
+      for (let i = 1; i <= 28; i++) {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = String(i);
+        if (i === state.day) opt.selected = true;
+        els.daySelect.appendChild(opt);
+      }
+    }
+
+    function formatDateDisplay(year, month, day) {
+      const era = year <= 0 ? 'BCE' : 'CE';
+      const displayYear = year <= 0 ? Math.abs(year) + 1 : year;
+      return `${monthNames[month - 1]} ${day}, ${displayYear} ${era}`;
+    }
+
+    function syncDate() {
+      state.year = Number(els.yearInput.value);
+      state.month = Number(els.monthSelect.value);
+      state.day = Number(els.daySelect.value);
+      els.dateDisplay.textContent = formatDateDisplay(state.year, state.month, state.day);
+      if (state.selected) loadPlaceData(state.selected);
+    }
+
+    function setChips(items) {
+      els.chips.innerHTML = '';
+      for (const item of items) {
+        const chip = document.createElement('div');
+        chip.className = `chip ${item.kind || ''}`.trim();
+        chip.textContent = item.text;
+        els.chips.appendChild(chip);
+      }
+    }
+
+    function setResults(items) {
+      els.results.innerHTML = '';
+      if (!items.length) {
+        els.results.innerHTML = `<div class="item"><p>No results found.</p></div>`;
+        return;
+      }
+
+      for (const item of items) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <h3>${escapeHtml(item.title || 'Untitled')}</h3>
+          ${item.date ? `<div class="small"><strong>${escapeHtml(item.date)}</strong></div>` : ''}
+          <p>${escapeHtml(item.summary || '')}</p>
+          ${item.link ? `<p><a href="${item.link}" target="_blank" rel="noreferrer">Open source</a></p>` : ''}
+        `;
+        els.results.appendChild(div);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function wikipediaTitle(title) {
+      return encodeURIComponent(String(title).replace(/ /g, '_'));
+    }
+
+    async function reverseGeocode(lat, lng) {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=5&addressdetails=1`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('Reverse geocoding failed');
+      const data = await res.json();
+      const a = data.address || {};
+      return {
+        lat: Number(lat),
+        lng: Number(lng),
+        displayName: data.display_name || 'Selected area',
+        place:
+          a.city || a.town || a.village || a.hamlet || a.municipality ||
+          a.county || a.state || a.region || a.country || 'Selected area',
+        country: a.country || ''
+      };
+    }
+
+    async function forwardGeocode(query) {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('Search failed');
+      const data = await res.json();
+      if (!data || !data.length) return null;
+      return {
+        lat: Number(data[0].lat),
+        lng: Number(data[0].lon)
+      };
+    }
+
+    async function wikipediaSummary(query) {
+      const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${wikipediaTitle(query)}`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.type === 'https://mediawiki.org/wiki/HyperSwitch/errors/not_found') return null;
+      return data;
+    }
+
+    async function wikipediaSearch(query) {
+      const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&list=search&srlimit=5&format=json&srsearch=${encodeURIComponent(query)}`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data?.query?.search || [];
+    }
+
+    async function gdeltNews(place, country, year, month, day) {
+      if (year < 2017 || year > 2026) return [];
+      const start = `${year}${String(month).padStart(2,'0')}${String(day).padStart(2,'0')}000000`;
+      const end = `${year}${String(month).padStart(2,'0')}${String(day).padStart(2,'0')}235959`;
+      const query = `"${place}"${country && country !== place ? ` OR "${country}"` : ''}`;
+      const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&maxrecords=5&format=json&startdatetime=${start}&enddatetime=${end}&sort=datedesc`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      if (!data?.articles || !Array.isArray(data.articles)) return [];
+      return data.articles.map(a => ({
+        title: a.title || 'News item',
+        summary: `Date-matched news-style result for ${place}.`,
+        date: `${formatDateDisplay(year, month, day)}`,
+        link: a.url || ''
+      }));
+    }
+
+    function seedMatches(country, year) {
+      return seedEvents
+        .filter(e => e.country === country && e.startYear <= year)
+        .sort((a, b) => a.startYear - b.startYear)
+        .map(e => ({
+          title: e.title,
+          summary: e.summary,
+          date: e.startYear <= 0 ? `${Math.abs(e.startYear) + 1} BCE` : `${e.startYear} CE`,
+          link: e.sourceUrl
+        }));
+    }
+
+    async function historyFallback(place, country, year) {
+      const direct = await wikipediaSummary(place);
+      if (direct?.extract) {
+        return [{
+          title: direct.title || place,
+          summary: direct.extract,
+          date: formatDateDisplay(year, state.month, state.day),
+          link: direct.content_urls?.desktop?.page || ''
+        }];
+      }
+
+      const directCountry = country ? await wikipediaSummary(country) : null;
+      if (directCountry?.extract) {
+        return [{
+          title: directCountry.title || country,
+          summary: directCountry.extract,
+          date: formatDateDisplay(year, state.month, state.day),
+          link: directCountry.content_urls?.desktop?.page || ''
+        }];
+      }
+
+      const searches = await wikipediaSearch(`${place} history ${year}`);
+      if (searches.length) {
+        const first = searches[0];
+        const summary = await wikipediaSummary(first.title);
+        return [{
+          title: first.title,
+          summary: summary?.extract || first.snippet.replace(/<[^>]+>/g, ''),
+          date: formatDateDisplay(year, state.month, state.day),
+          link: summary?.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${wikipediaTitle(first.title)}`
+        }];
+      }
+
+      return [];
+    }
+
+    async function loadPlaceData(selected) {
+      const token = ++state.token;
+      state.selected = selected;
+
+      els.locationTitle.textContent = selected.place || selected.country || 'Selected place';
+      els.locationMeta.textContent = `Selected date: ${formatDateDisplay(state.year, state.month, state.day)}`;
+      setChips([{ text: 'Loading…' }]);
+      setResults([{ title: 'Loading', summary: 'Fetching data for this location…' }]);
+      els.globeStatus.textContent = `Selected: ${selected.place || selected.country}`;
+
+      try {
+        const news = await gdeltNews(selected.place, selected.country, state.year, state.month, state.day);
+        if (token !== state.token) return;
+
+        const seeds = seedMatches(selected.country, state.year);
+
+        if (news.length) {
+          setChips([
+            { text: `Place: ${selected.place}` },
+            { text: `Country: ${selected.country || 'Unknown'}` },
+            { text: 'News', kind: 'news' },
+            ...(seeds.length ? [{ text: 'Seed data available', kind: 'seed' }] : [])
+          ]);
+          setResults([...news, ...seeds]);
+          return;
+        }
+
+        const history = await historyFallback(selected.place, selected.country, state.year);
+        if (token !== state.token) return;
+
+        if (history.length || seeds.length) {
+          setChips([
+            { text: `Place: ${selected.place}` },
+            { text: `Country: ${selected.country || 'Unknown'}` },
+            ...(history.length ? [{ text: 'Historical fallback', kind: 'history' }] : []),
+            ...(seeds.length ? [{ text: 'Seed data', kind: 'seed' }] : [])
+          ]);
+          setResults([...seeds, ...history]);
+          return;
+        }
+
+        setChips([
+          { text: `Place: ${selected.place}` },
+          { text: 'No match', kind: 'error' }
+        ]);
+        setResults([{
+          title: 'No result found',
+          summary: 'No usable news or history result was found for this place and date.'
+        }]);
+      } catch (err) {
+        if (token !== state.token) return;
+        setChips([{ text: 'Lookup failed', kind: 'error' }]);
+        setResults([{
+          title: 'Error',
+          summary: 'The data lookup failed. Try another location or try again.'
+        }]);
+        console.error(err);
+      }
+    }
+
+    async function handleSearch() {
+      const q = els.searchInput.value.trim();
+      if (!q) return;
+      els.globeStatus.textContent = `Searching: ${q}`;
+      try {
+        const found = await forwardGeocode(q);
+        if (!found) {
+          setChips([{ text: 'Search failed', kind: 'error' }]);
+          setResults([{ title: 'No match', summary: 'No location was found for that search.' }]);
+          return;
+        }
+
+        state.world.pointOfView({ lat: found.lat, lng: found.lng, altitude: 1.6 }, 1200);
+        const selected = await reverseGeocode(found.lat, found.lng);
+        await loadPlaceData(selected);
+      } catch (err) {
+        setChips([{ text: 'Search failed', kind: 'error' }]);
+        setResults([{ title: 'Error', summary: 'Location search failed.' }]);
+        console.error(err);
+      }
+    }
+
+    function initGlobe() {
+      const world = Globe()(els.globe)
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+        .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+        .backgroundColor('#020617')
+        .width(els.globe.clientWidth)
+        .height(els.globe.clientHeight);
+
+      const controls = world.controls();
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.25;
+
+      world.onGlobeClick(async ({ lat, lng }) => {
+        els.globeStatus.textContent = `Clicked: ${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+        try {
+          const selected = await reverseGeocode(lat, lng);
+          await loadPlaceData(selected);
+        } catch (err) {
+          setChips([{ text: 'Map click failed', kind: 'error' }]);
+          setResults([{ title: 'Error', summary: 'Could not determine the clicked location.' }]);
+          console.error(err);
+        }
+      });
+
+      window.addEventListener('resize', () => {
+        world.width(els.globe.clientWidth).height(els.globe.clientHeight);
+      });
+
+      state.world = world;
+      els.globeStatus.textContent = 'Globe ready. Click anywhere or search a place.';
+    }
+
+    fillDateControls();
+    els.dateDisplay.textContent = formatDateDisplay(state.year, state.month, state.day);
+
+    els.yearInput.addEventListener('change', syncDate);
+    els.monthSelect.addEventListener('change', syncDate);
+    els.daySelect.addEventListener('change', syncDate);
+    els.searchBtn.addEventListener('click', handleSearch);
+    els.searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleSearch();
+    });
+
+    initGlobe();
+  </script>
 </body>
 </html>
