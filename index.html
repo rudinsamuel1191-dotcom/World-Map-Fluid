@@ -1,795 +1,469 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>History Repeats Globe</title>
-  <style>
-    :root {
-      --bg: #020617;
-      --panel: rgba(15, 23, 42, 0.92);
-      --border: rgba(148, 163, 184, 0.18);
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --accent: #60a5fa;
-      --danger: #ef4444;
-      --warn: #f97316;
-      --yellow: #facc15;
+async function wikipediaGeoSearch(lat, lng) {
+  const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&list=geosearch&gscoord=${encodeURIComponent(lat + '|' + lng)}&gsradius=10000&gslimit=5&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Wikipedia geosearch failed');
+  const data = await res.json();
+  return data?.query?.geosearch || [];
+}
+
+async function wikipediaSummary(title) {
+  const safe = slugifyWikipediaTitle(title);
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${safe}`;
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if (!res.ok) throw new Error('Wikipedia summary failed');
+  return await res.json();
+}
+
+async function wikipediaSearch(query) {
+  const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Wikipedia search failed');
+  const data = await res.json();
+  return data?.query?.search || [];
+}
+
+async function gdeltRecentNewsSearch(place, country) {
+  const query = [place, country].filter(Boolean).map(v => `"${v}"`).join(' OR ');
+  if (!query) return [];
+
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&maxrecords=8&format=json&sort=datedesc`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('GDELT request failed');
+  const data = await res.json();
+
+  if (!data || !data.articles || !Array.isArray(data.articles)) {
+    return [];
+  }
+
+  return data.articles.map((article, index) => ({
+    title: article.title || `News item ${index + 1}`,
+    summary: `Recent coverage connected to ${place || country}.`,
+    date: article.seendate || 'Recent',
+    region: [place, country].filter(Boolean).join(', '),
+    tags: ['news', 'recent', 'gdelt'],
+    badge: 'News',
+    badgeClass: 'high',
+    sourceMode: 'news',
+    sources: [
+      ...(article.url ? [{ label: article.domain || article.url, url: article.url }] : []),
+      { label: 'GDELT query', url }
+    ]
+  }));
+}
+
+async function buildHistoricalFallback(place, country, lat, lng, year) {
+  const cards = [];
+  const seen = new Set();
+
+  try {
+    const nearby = await wikipediaGeoSearch(lat, lng);
+    if (nearby.length) {
+      const best = nearby[0];
+      const summary = await wikipediaSummary(best.title);
+      cards.push({
+        title: summary.title || best.title,
+        summary: summary.extract || `Nearby historical or geographic reference for ${best.title}.`,
+        date: `Reference context for ${year <= 0 ? `${Math.abs(year) + 1} BCE` : `${year} CE`}`,
+        region: [place, country].filter(Boolean).join(', '),
+        tags: ['geography', 'reference', 'wikipedia'],
+        badge: 'Historical',
+        badgeClass: 'medium',
+        sourceMode: 'history',
+        sources: [
+          { label: 'Wikipedia summary', url: summary.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${slugifyWikipediaTitle(best.title)}` }
+        ]
+      });
+      seen.add(best.title);
     }
-
-    * { box-sizing: border-box; }
-
-    html, body {
-      margin: 0;
-      height: 100%;
-      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 30%),
-        linear-gradient(180deg, #020617 0%, #0f172a 100%);
-      color: var(--text);
-    }
-
-    body {
-      min-height: 100vh;
-    }
-
-    .app {
-      padding: 18px;
-      display: grid;
-      grid-template-rows: auto auto 1fr auto;
-      gap: 16px;
-      min-height: 100vh;
-    }
-
-    .header h1 {
-      margin: 0;
-      font-size: 34px;
-    }
-
-    .header p {
-      margin: 6px 0 0;
-      color: var(--muted);
-    }
-
-    .toolbar {
-      display: grid;
-      grid-template-columns: 1.5fr 2fr 0.8fr 0.8fr auto;
-      gap: 14px;
-      padding: 14px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      align-items: end;
-    }
-
-    .toolbar .block {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .label {
-      font-size: 12px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .clock {
-      font-size: 28px;
-      font-weight: 700;
-    }
-
-    input[type="range"],
-    input[type="number"],
-    select,
-    button {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #0f172a;
-      color: var(--text);
-    }
-
-    input[type="range"] {
-      padding: 0;
-    }
-
-    button {
-      cursor: pointer;
-      font-weight: 700;
-    }
-
-    .main {
-      display: grid;
-      grid-template-columns: minmax(700px, 1fr) 420px;
-      gap: 16px;
-      align-items: start;
-    }
-
-    .globe-card,
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      overflow: hidden;
-    }
-
-    .globe-card {
-      padding: 8px 8px 12px;
-    }
-
-    #globeViz {
-      width: 100%;
-      height: 72vh;
-      min-height: 620px;
-      border-radius: 14px;
-      overflow: hidden;
-    }
-
-    .globe-caption {
-      padding: 10px 14px 2px;
-      color: #cbd5e1;
-      font-size: 14px;
-    }
-
-    .panel {
-      padding: 18px;
-      max-height: 80vh;
-      overflow: auto;
-    }
-
-    .panel h2 {
-      margin: 0 0 6px;
-      font-size: 28px;
-    }
-
-    .muted {
-      color: var(--muted);
-    }
-
-    .insight {
-      margin: 14px 0 18px;
-      padding: 14px;
-      border-radius: 14px;
-      border: 1px solid rgba(96, 165, 250, 0.24);
-      background: rgba(30, 41, 59, 0.72);
-    }
-
-    .events {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .event {
-      border: 1px solid rgba(148, 163, 184, 0.14);
-      background: rgba(2, 6, 23, 0.65);
-      border-radius: 14px;
-      padding: 14px;
-    }
-
-    .event-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .event h3 {
-      margin: 0;
-      font-size: 18px;
-    }
-
-    .event p {
-      margin: 10px 0 0;
-      line-height: 1.45;
-    }
-
-    .small {
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .badge {
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .low { background: rgba(250, 204, 21, 0.14); color: #fde047; }
-    .medium { background: rgba(251, 146, 60, 0.14); color: #fdba74; }
-    .high { background: rgba(249, 115, 22, 0.14); color: #fdba74; }
-    .critical { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
-
-    .footer {
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    a {
-      color: #93c5fd;
-    }
-
-    @media (max-width: 1200px) {
-      .toolbar {
-        grid-template-columns: 1fr;
-      }
-
-      .main {
-        grid-template-columns: 1fr;
-      }
-
-      #globeViz {
-        min-height: 500px;
-        height: 60vh;
-      }
-
-      .panel {
-        max-height: none;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="app">
-    <div class="header">
-      <h1>History Repeats Globe</h1>
-      <p>A single-file geopolitical globe with clickable records and a time control.</p>
-    </div>
-
-    <div class="toolbar">
-      <div class="block">
-        <div class="label">Timeline</div>
-        <div class="clock" id="clockText">March 23, 2026 CE</div>
-      </div>
-
-      <div class="block">
-        <label class="label" for="yearRange">Year</label>
-        <input id="yearRange" type="range" min="-4000" max="2026" value="2026" />
-        <input id="yearNumber" type="number" min="-4000" max="2026" value="2026" />
-      </div>
-
-      <div class="block">
-        <label class="label" for="monthSelect">Month</label>
-        <select id="monthSelect"></select>
-      </div>
-
-      <div class="block">
-        <label class="label" for="daySelect">Day</label>
-        <select id="daySelect"></select>
-      </div>
-
-      <div class="block">
-        <label class="label">&nbsp;</label>
-        <button id="playBtn" type="button">Play</button>
-      </div>
-    </div>
-
-    <div class="main">
-      <div class="globe-card">
-        <div id="globeViz"></div>
-        <div class="globe-caption" id="globeCaption">
-          Loading globe...
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2 id="locationTitle">Israel</h2>
-        <div class="muted" id="recordsThrough">Records shown through March 23, 2026 CE</div>
-
-        <div class="insight">
-          <strong>Repeat-pattern signal</strong>
-          <p id="patternText" style="margin:8px 0 0;">
-            Loading records...
-          </p>
-        </div>
-
-        <div class="events" id="eventsList"></div>
-      </div>
-    </div>
-
-    <div class="footer">
-      MVP note: this is a starter version with a small seed dataset. You can expand the records later.
-    </div>
-  </div>
-
-  <script src="https://unpkg.com/three"></script>
-  <script src="https://unpkg.com/globe.gl"></script>
-  <script src="https://unpkg.com/topojson-client@3"></script>
-
-  <script>
-    const START_YEAR = -4000;
-    const END_YEAR = 2026;
-
-    const historicalEvents = [
-      {
-        id: 'jerusalem-babylon-586-bce',
-        title: 'Babylonian siege and destruction of Jerusalem',
-        start: '-0589-01-01',
-        end: '-0586-08-01',
-        latitude: 31.778,
-        longitude: 35.235,
-        modernCountries: ['Israel', 'Palestine'],
-        regionLabel: 'Jerusalem',
-        summary: 'Nebuchadnezzar II of Babylon besieged Jerusalem, and the city was destroyed in the debated 587/586 BCE window.',
-        severity: 'critical',
-        tags: ['siege', 'empire', 'religion', 'destruction'],
-        sourceName: 'Wikipedia: Siege of Jerusalem (587 BC)',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(587_BC)'
-      },
-      {
-        id: 'jerusalem-roman-70-ce',
-        title: 'Roman siege and destruction of Jerusalem',
-        start: '0070-04-13',
-        end: '0070-09-08',
-        latitude: 31.778,
-        longitude: 35.235,
-        modernCountries: ['Israel', 'Palestine'],
-        regionLabel: 'Jerusalem',
-        summary: 'Roman forces led by Titus captured Jerusalem during the First Jewish–Roman War and destroyed the Second Temple in 70 CE.',
-        severity: 'critical',
-        tags: ['siege', 'empire', 'religion', 'destruction'],
-        sourceName: 'Wikipedia: Siege of Jerusalem (70 CE)',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(70_CE)'
-      },
-      {
-        id: 'jerusalem-crusader-1099',
-        title: 'Crusader conquest of Jerusalem',
-        start: '1099-06-07',
-        end: '1099-07-15',
-        latitude: 31.778,
-        longitude: 35.235,
-        modernCountries: ['Israel', 'Palestine'],
-        regionLabel: 'Jerusalem',
-        summary: 'Crusader forces besieged and captured Jerusalem at the end of the First Crusade in July 1099.',
-        severity: 'critical',
-        tags: ['siege', 'religion', 'conquest', 'crusades'],
-        sourceName: 'Wikipedia: Siege of Jerusalem (1099)',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(1099)'
-      },
-      {
-        id: 'jerusalem-british-1917',
-        title: 'Battle of Jerusalem',
-        start: '1917-11-17',
-        end: '1917-12-30',
-        latitude: 31.778,
-        longitude: 35.235,
-        modernCountries: ['Israel', 'Palestine'],
-        regionLabel: 'Jerusalem',
-        summary: 'British Empire forces captured Jerusalem from the Ottoman Empire during World War I.',
-        severity: 'high',
-        tags: ['world-war', 'empire', 'campaign', 'control'],
-        sourceName: 'Wikipedia: Battle of Jerusalem',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Battle_of_Jerusalem'
-      },
-      {
-        id: 'jerusalem-war-1948',
-        title: 'Jerusalem fighting in the 1948 Arab–Israeli War',
-        start: '1948-05-15',
-        end: '1948-07-18',
-        latitude: 31.778,
-        longitude: 35.235,
-        modernCountries: ['Israel', 'Palestine', 'Jordan'],
-        regionLabel: 'Jerusalem',
-        summary: 'Heavy fighting took place in and around Jerusalem during the 1948 Arab–Israeli War.',
-        severity: 'critical',
-        tags: ['statehood', 'war', 'siege', 'territory'],
-        sourceName: 'Wikipedia: 1948 Arab–Israeli War',
-        sourceUrl: 'https://en.wikipedia.org/wiki/1948_Arab%E2%80%93Israeli_War'
-      },
-      {
-        id: 'sixesday-1967',
-        title: 'Six-Day War',
-        start: '1967-06-05',
-        end: '1967-06-10',
-        latitude: 31.778,
-        longitude: 35.235,
-        modernCountries: ['Israel', 'Palestine', 'Jordan', 'Egypt', 'Syria'],
-        regionLabel: 'Jerusalem and surrounding fronts',
-        summary: 'The Six-Day War reshaped control of Jerusalem and surrounding territories in June 1967.',
-        severity: 'critical',
-        tags: ['war', 'territory', 'statehood', 'regional'],
-        sourceName: 'Wikipedia: Six-Day War',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Six-Day_War'
-      },
-      {
-        id: 'yom-kippur-1973',
-        title: 'Yom Kippur War',
-        start: '1973-10-06',
-        end: '1973-10-25',
-        latitude: 31.0,
-        longitude: 34.75,
-        modernCountries: ['Israel', 'Egypt', 'Syria'],
-        regionLabel: 'Sinai and Golan fronts',
-        summary: 'Egypt and Syria launched a surprise attack on Israel on Yom Kippur in October 1973.',
-        severity: 'critical',
-        tags: ['war', 'surprise-attack', 'regional'],
-        sourceName: 'Wikipedia: Yom Kippur War',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Yom_Kippur_War'
-      },
-      {
-        id: 'russia-ukraine-2022',
-        title: 'Russian invasion of Ukraine',
-        start: '2022-02-24',
-        end: '2026-12-31',
-        latitude: 50.4501,
-        longitude: 30.5234,
-        modernCountries: ['Ukraine', 'Russia', 'Belarus'],
-        regionLabel: 'Ukraine',
-        summary: 'Russia launched a full-scale invasion of Ukraine on February 24, 2022.',
-        severity: 'critical',
-        tags: ['invasion', 'war', 'sovereignty', 'modern'],
-        sourceName: 'Wikipedia: Russian invasion of Ukraine',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Russian_invasion_of_Ukraine'
-      },
-      {
-        id: 'gulf-war-1991',
-        title: 'Gulf War',
-        start: '1991-01-17',
-        end: '1991-02-28',
-        latitude: 29.3759,
-        longitude: 47.9774,
-        modernCountries: ['Iraq', 'Kuwait', 'Saudi Arabia'],
-        regionLabel: 'Kuwait and Iraq',
-        summary: 'A U.S.-led coalition launched Operation Desert Storm after Iraq occupied Kuwait.',
-        severity: 'high',
-        tags: ['invasion', 'coalition', 'regional'],
-        sourceName: 'Wikipedia: Gulf War',
-        sourceUrl: 'https://en.wikipedia.org/wiki/Gulf_War'
-      }
-    ];
-
-    const severityColor = {
-      low: '#facc15',
-      medium: '#fb923c',
-      high: '#f97316',
-      critical: '#ef4444'
-    };
-
-    const severityLabel = {
-      low: 'Low',
-      medium: 'Medium',
-      high: 'High',
-      critical: 'Critical'
-    };
-
-    const state = {
-      year: 2026,
-      month: 3,
-      day: 23,
-      playing: false,
-      selectedLocation: 'Israel',
-      world: null,
-      countries: []
-    };
-
-    const yearRange = document.getElementById('yearRange');
-    const yearNumber = document.getElementById('yearNumber');
-    const monthSelect = document.getElementById('monthSelect');
-    const daySelect = document.getElementById('daySelect');
-    const playBtn = document.getElementById('playBtn');
-    const clockText = document.getElementById('clockText');
-    const locationTitle = document.getElementById('locationTitle');
-    const recordsThrough = document.getElementById('recordsThrough');
-    const patternText = document.getElementById('patternText');
-    const eventsList = document.getElementById('eventsList');
-    const globeCaption = document.getElementById('globeCaption');
-
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-
-    for (let i = 0; i < 12; i++) {
-      const option = document.createElement('option');
-      option.value = String(i + 1);
-      option.textContent = monthNames[i];
-      if (i + 1 === state.month) option.selected = true;
-      monthSelect.appendChild(option);
-    }
-
-    for (let i = 1; i <= 28; i++) {
-      const option = document.createElement('option');
-      option.value = String(i);
-      option.textContent = String(i);
-      if (i === state.day) option.selected = true;
-      daySelect.appendChild(option);
-    }
-
-    function pad(value, size = 2) {
-      return String(value).padStart(size, '0');
-    }
-
-    function buildExtendedDate(year, month, day) {
-      const sign = year < 0 ? '-' : '';
-      const absYear = Math.abs(year);
-      return `${sign}${pad(absYear, 4)}-${pad(month)}-${pad(day)}`;
-    }
-
-    function parseExtendedDate(value) {
-      const match = value.match(/^([+-]?\d{4,})-(\d{2})-(\d{2})$/);
-      if (!match) throw new Error('Invalid date ' + value);
-      const year = Number(match[1]);
-      const month = Number(match[2]);
-      const day = Number(match[3]);
-      return Date.UTC(year, month - 1, day);
-    }
-
-    function formatExtendedDate(value) {
-      const match = value.match(/^([+-]?\d{4,})-(\d{2})-(\d{2})$/);
-      if (!match) return value;
-      const year = Number(match[1]);
-      const month = Number(match[2]);
-      const day = Number(match[3]);
-      const era = year <= 0 ? 'BCE' : 'CE';
-      const displayYear = year <= 0 ? Math.abs(year) + 1 : year;
-      return `${monthNames[month - 1]} ${day}, ${displayYear} ${era}`;
-    }
-
-    function isDateWithinRange(target, start, end) {
-      const t = parseExtendedDate(target);
-      return t >= parseExtendedDate(start) && t <= parseExtendedDate(end);
-    }
-
-    function compareByStart(a, b) {
-      return parseExtendedDate(a.start) - parseExtendedDate(b.start);
-    }
-
-    function currentDate() {
-      return buildExtendedDate(state.year, state.month, state.day);
-    }
-
-    function getActiveEvents() {
-      const cd = currentDate();
-      return historicalEvents.filter(e => isDateWithinRange(cd, e.start, e.end));
-    }
-
-    function getLocationEvents() {
-      const cd = currentDate();
-      return historicalEvents
-        .filter(e => e.modernCountries.includes(state.selectedLocation) && parseExtendedDate(e.start) <= parseExtendedDate(cd))
-        .sort(compareByStart);
-    }
-
-    function updateClock() {
-      clockText.textContent = formatExtendedDate(currentDate());
-      recordsThrough.textContent = `Records shown through ${formatExtendedDate(currentDate())}`;
-    }
-
-    function updatePanel() {
-      const events = getLocationEvents();
-      locationTitle.textContent = state.selectedLocation;
-
-      const tagCounts = new Map();
-      for (const event of events) {
-        for (const tag of event.tags) {
-          tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+  } catch (err) {}
+
+  const queries = [
+    `${place} history ${year}`,
+    `${country} history ${year}`,
+    `${place} ${year}`,
+    `${country} ${year}`,
+    `${place} history`,
+    `${country} history`
+  ].filter(Boolean);
+
+  for (const q of queries) {
+    try {
+      const results = await wikipediaSearch(q);
+      if (results && results.length) {
+        const picked = results.slice(0, 2);
+        for (const item of picked) {
+          if (seen.has(item.title)) continue;
+          seen.add(item.title);
+
+          let summaryText = item.snippet
+            ? item.snippet.replace(/<[^>]+>/g, '')
+            : `Historical search result related to ${q}.`;
+
+          let pageUrl = `https://en.wikipedia.org/wiki/${slugifyWikipediaTitle(item.title)}`;
+
+          try {
+            const summary = await wikipediaSummary(item.title);
+            if (summary?.extract) summaryText = summary.extract;
+            if (summary?.content_urls?.desktop?.page) pageUrl = summary.content_urls.desktop.page;
+          } catch (e) {}
+
+          cards.push({
+            title: item.title,
+            summary: summaryText,
+            date: `Historical reference for ${year <= 0 ? `${Math.abs(year) + 1} BCE` : `${year} CE`}`,
+            region: [place, country].filter(Boolean).join(', '),
+            tags: ['history', 'encyclopedic', 'wikipedia-search'],
+            badge: 'Historical',
+            badgeClass: 'medium',
+            sourceMode: 'history',
+            sources: [{ label: 'Wikipedia page', url: pageUrl }]
+          });
+
+          if (cards.length >= 5) return cards;
         }
       }
-      const topTags = Array.from(tagCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4)
-        .map(x => x[0]);
+    } catch (err) {}
+  }
 
-      patternText.textContent = events.length > 1
-        ? `${state.selectedLocation} has ${events.length} recorded events in this dataset. Recurring themes: ${topTags.join(', ')}.`
-        : 'Add more records for this location to strengthen pattern detection.';
+  return cards;
+}
 
-      eventsList.innerHTML = '';
+async function loadLocationData() {
+  const token = ++state.loadingToken;
+  const lat = state.selectedCoords?.lat;
+  const lng = state.selectedCoords?.lng;
 
-      if (!events.length) {
-        const empty = document.createElement('p');
-        empty.textContent = 'No records found for this location at or before the selected date.';
-        eventsList.appendChild(empty);
-        return;
+  if (lat == null || lng == null) return;
+
+  locationTitle.textContent = state.selectedDisplayName || state.selectedCountry || 'Loading...';
+  patternText.textContent = 'Looking up the selected place...';
+  renderCards([{
+    title: 'Loading',
+    summary: 'Trying recent/news-style coverage first, then historical fallback...',
+    badge: 'Loading',
+    badgeClass: 'low',
+    sources: []
+  }]);
+
+  const year = state.year;
+
+  try {
+    const geo = await reverseGeocode(lat, lng);
+    if (token !== state.loadingToken) return;
+
+    state.selectedCountry = geo.country || '';
+    state.selectedDisplayName = geo.city || geo.displayName || geo.country || 'Selected area';
+
+    locationTitle.textContent = state.selectedDisplayName;
+    updateCaption('lookup in progress');
+    updateClock();
+
+    const status = [
+      { text: `Place: ${state.selectedDisplayName}` },
+      ...(state.selectedCountry ? [{ text: `Country: ${state.selectedCountry}` }] : []),
+      { text: `Date: ${formatCurrentDateText()}` }
+    ];
+
+    let cards = [];
+    let primaryMode = '';
+
+    if (year >= 2017) {
+      try {
+        const news = await gdeltRecentNewsSearch(state.selectedDisplayName, state.selectedCountry);
+        if (token !== state.loadingToken) return;
+        if (news.length) {
+          cards = news;
+          primaryMode = 'news';
+        }
+      } catch (err) {}
+    }
+
+    if (!cards.length) {
+      const historical = await buildHistoricalFallback(
+        state.selectedDisplayName,
+        state.selectedCountry,
+        lat,
+        lng,
+        year
+      );
+      if (token !== state.loadingToken) return;
+      cards = historical;
+      if (historical.length) primaryMode = 'history';
+    }
+
+    const seed = getSeedMatchesForLocation();
+    if (seed.length) {
+      cards = [...seed, ...cards].slice(0, 8);
+      if (!primaryMode) primaryMode = 'seed';
+    }
+
+    if (!cards.length) {
+      cards = [{
+        title: 'No exact match found',
+        summary: 'No exact result was found from the current public-source chain for this place. Try a nearby city, broader region, or expand the custom dataset later.',
+        date: formatCurrentDateText(),
+        region: [state.selectedDisplayName, state.selectedCountry].filter(Boolean).join(', '),
+        tags: ['no-match'],
+        badge: 'Sparse data',
+        badgeClass: 'low',
+        sourceMode: 'warning',
+        sources: []
+      }];
+      primaryMode = 'warning';
+    }
+
+    if (primaryMode === 'news') {
+      status.push({ text: 'Source mode: News', kind: 'news' });
+      patternText.textContent = 'Showing recent/news-style coverage first for this location, with historical fallback used when needed.';
+    } else if (primaryMode === 'history') {
+      status.push({ text: 'Source mode: Historical', kind: 'history' });
+      patternText.textContent = 'No strong recent/news result was found, so the panel is showing historical or encyclopedic fallback material.';
+    } else if (primaryMode === 'seed') {
+      status.push({ text: 'Source mode: Seed data', kind: 'seed' });
+      patternText.textContent = 'Showing curated seed records for this location and date range.';
+    } else {
+      status.push({ text: 'Source mode: Sparse', kind: 'warning' });
+      patternText.textContent = 'This place/date combination has sparse coverage in the current public-source chain.';
+    }
+
+    if (year < 2017) {
+      status.push({ text: 'Older dates lean historical', kind: 'warning' });
+    }
+
+    setStatusChips(status);
+    renderCards(cards);
+    updateCaption(primaryMode || 'loaded');
+  } catch (err) {
+    if (token !== state.loadingToken) return;
+    setStatusChips([{ text: 'Lookup failed', kind: 'warning' }]);
+    renderCards([{
+      title: 'Lookup failed',
+      summary: 'The app could not load data for this location right now. Try again or choose a nearby major city.',
+      badge: 'Error',
+      badgeClass: 'critical',
+      sources: []
+    }]);
+    patternText.textContent = 'The public-source lookup failed for this request.';
+    updateCaption('lookup failed');
+    console.error(err);
+  }
+}
+
+function syncDateControls() {
+  yearRange.value = String(state.year);
+  yearNumber.value = String(state.year);
+  monthSelect.value = String(state.month);
+  daySelect.value = String(state.day);
+  updateClock();
+}
+
+function getCountryName(feat) {
+  return feat.properties?.name || feat.properties?.NAME || feat.properties?.ADMIN || 'Unknown';
+}
+
+function updateConflictLayer() {
+  if (!state.world) return;
+
+  const cd = currentDate();
+  const activeEvents = seedHistoricalEvents.filter(e => isDateWithinRange(cd, e.start, e.end));
+  const activeCountries = new Set();
+  activeEvents.forEach(event => event.modernCountries.forEach(c => activeCountries.add(c)));
+
+  const points = activeEvents.map(event => ({
+    id: event.id,
+    lat: event.latitude,
+    lng: event.longitude,
+    color: severityColor[event.severity],
+    size: event.severity === 'critical' ? 0.4 : event.severity === 'high' ? 0.3 : 0.22,
+    title: event.title
+  }));
+
+  state.world
+    .polygonsData(state.countries)
+    .polygonCapColor(feat => {
+      const name = getCountryName(feat);
+      return activeCountries.has(name)
+        ? 'rgba(239,68,68,0.8)'
+        : 'rgba(59,130,246,0.08)';
+    })
+    .polygonSideColor(() => 'rgba(59,130,246,0.06)')
+    .polygonStrokeColor(() => '#334155')
+    .polygonAltitude(feat => activeCountries.has(getCountryName(feat)) ? 0.03 : 0.01)
+    .pointsData(points)
+    .pointLat('lat')
+    .pointLng('lng')
+    .pointColor('color')
+    .pointAltitude('size')
+    .pointRadius(0.35)
+    .pointLabel(point => point.title)
+    .onPointClick(point => {
+      const event = seedHistoricalEvents.find(e => e.id === point.id);
+      if (event) {
+        state.selectedCoords = { lat: event.latitude, lng: event.longitude };
+        state.selectedCountry = event.modernCountries[0] || '';
+        state.selectedDisplayName = event.regionLabel;
+        syncDateControls();
+        loadLocationData();
       }
+    });
 
-      for (const event of events) {
-        const article = document.createElement('article');
-        article.className = 'event';
+  updateCaption(`${activeEvents.length} seed conflict markers`);
+}
 
-        article.innerHTML = `
-          <div class="event-top">
-            <h3>${escapeHtml(event.title)}</h3>
-            <span class="badge ${event.severity}">${severityLabel[event.severity]}</span>
-          </div>
-          <p class="small"><strong>${escapeHtml(formatExtendedDate(event.start))} – ${escapeHtml(formatExtendedDate(event.end))}</strong></p>
-          <p>${escapeHtml(event.summary)}</p>
-          <p class="small"><strong>Region:</strong> ${escapeHtml(event.regionLabel)}</p>
-          <p class="small"><strong>Tags:</strong> ${escapeHtml(event.tags.join(', '))}</p>
-          <p class="small"><strong>Source:</strong> <a href="${event.sourceUrl}" target="_blank" rel="noreferrer">${escapeHtml(event.sourceName)}</a></p>
-        `;
+function onDateChange() {
+  syncDateControls();
+  updateConflictLayer();
+  if (state.selectedCoords) {
+    loadLocationData();
+  }
+}
 
-        eventsList.appendChild(article);
+yearRange.addEventListener('input', e => {
+  state.year = Number(e.target.value);
+  onDateChange();
+});
+
+yearNumber.addEventListener('input', e => {
+  let value = Number(e.target.value);
+  if (Number.isNaN(value)) return;
+  value = Math.max(START_YEAR, Math.min(END_YEAR, value));
+  state.year = value;
+  onDateChange();
+});
+
+monthSelect.addEventListener('change', e => {
+  state.month = Number(e.target.value);
+  onDateChange();
+});
+
+daySelect.addEventListener('change', e => {
+  state.day = Number(e.target.value);
+  onDateChange();
+});
+
+async function runSearch() {
+  const query = searchInput.value.trim();
+  if (!query) return;
+
+  setStatusChips([{ text: 'Searching location...' }]);
+  patternText.textContent = 'Resolving the searched place...';
+
+  try {
+    const result = await forwardGeocode(query);
+    state.selectedCoords = { lat: result.lat, lng: result.lng };
+    state.selectedDisplayName = result.displayName || query;
+
+    if (state.world) {
+      state.world.pointOfView({ lat: result.lat, lng: result.lng, altitude: 1.8 }, 1200);
+    }
+
+    await loadLocationData();
+  } catch (err) {
+    setStatusChips([{ text: 'Search failed', kind: 'warning' }]);
+    renderCards([{
+      title: 'Location not found',
+      summary: 'The search did not find a matching location. Try a more specific place name.',
+      badge: 'Search',
+      badgeClass: 'medium',
+      sources: []
+    }]);
+    patternText.textContent = 'Search could not resolve that location.';
+  }
+}
+
+searchBtn.addEventListener('click', runSearch);
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') runSearch();
+});
+
+async function initGlobe() {
+  const el = document.getElementById('globeViz');
+
+  const world = Globe()(el)
+    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+    .backgroundColor('#020817')
+    .width(el.clientWidth)
+    .height(el.clientHeight);
+
+  state.world = world;
+
+  const controls = world.controls();
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.25;
+
+  const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+  const topo = await res.json();
+  state.countries = topojson.feature(topo, topo.objects.countries).features;
+
+  world
+    .polygonsData(state.countries)
+    .polygonCapColor(() => 'rgba(59,130,246,0.08)')
+    .polygonSideColor(() => 'rgba(59,130,246,0.06)')
+    .polygonStrokeColor(() => '#334155')
+    .polygonAltitude(() => 0.01)
+    .onPolygonClick(feat => {
+      const center = polygonCenter(feat);
+      if (center) {
+        state.selectedCoords = { lat: center.lat, lng: center.lng };
+        state.selectedCountry = getCountryName(feat);
+        state.selectedDisplayName = getCountryName(feat);
+        syncDateControls();
+        loadLocationData();
       }
-    }
-
-    function updateCaption() {
-      const activeEvents = getActiveEvents();
-      globeCaption.innerHTML = `
-        <strong>Active events on ${escapeHtml(currentDate())}:</strong> ${activeEvents.length}
-        <span style="margin:0 10px;color:#64748b;">|</span>
-        <strong>Selected:</strong> ${escapeHtml(state.selectedLocation)}
-      `;
-    }
-
-    function updateGlobe() {
-      if (!state.world) return;
-
-      const activeEvents = getActiveEvents();
-      const activeCountries = new Set();
-
-      activeEvents.forEach(event => {
-        event.modernCountries.forEach(c => activeCountries.add(c));
-      });
-
-      const points = activeEvents.map(event => ({
-        id: event.id,
-        lat: event.latitude,
-        lng: event.longitude,
-        color: severityColor[event.severity],
-        size: event.severity === 'critical' ? 0.4 : event.severity === 'high' ? 0.3 : 0.22,
-        title: event.title
-      }));
-
-      state.world
-        .polygonsData(state.countries)
-        .polygonCapColor(feat => {
-          const name = getCountryName(feat);
-          return activeCountries.has(name)
-            ? 'rgba(239,68,68,0.8)'
-            : 'rgba(59,130,246,0.08)';
-        })
-        .polygonSideColor(() => 'rgba(59,130,246,0.06)')
-        .polygonStrokeColor(() => '#334155')
-        .polygonAltitude(feat => activeCountries.has(getCountryName(feat)) ? 0.03 : 0.01)
-        .pointsData(points)
-        .pointLat('lat')
-        .pointLng('lng')
-        .pointColor('color')
-        .pointAltitude('size')
-        .pointRadius(0.35)
-        .pointLabel(point => point.title)
-        .onPointClick(point => {
-          const event = historicalEvents.find(e => e.id === point.id);
-          if (event) {
-            state.selectedLocation = event.modernCountries[0];
-            renderAll();
-          }
-        });
-
-      updateCaption();
-    }
-
-    function getCountryName(feat) {
-      return feat.properties?.name || feat.properties?.NAME || feat.properties?.ADMIN || 'Unknown';
-    }
-
-    function renderAll() {
-      yearRange.value = String(state.year);
-      yearNumber.value = String(state.year);
-      monthSelect.value = String(state.month);
-      daySelect.value = String(state.day);
-      playBtn.textContent = state.playing ? 'Pause' : 'Play';
-
-      updateClock();
-      updatePanel();
-      updateGlobe();
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
-    }
-
-    let intervalId = null;
-
-    function togglePlay() {
-      state.playing = !state.playing;
-
-      if (state.playing) {
-        intervalId = setInterval(() => {
-          let d = state.day + 30;
-          let m = state.month;
-          let y = state.year;
-
-          while (d > 28) {
-            d -= 28;
-            m += 1;
-            if (m > 12) {
-              m = 1;
-              y += 1;
-            }
-          }
-
-          if (y > END_YEAR) {
-            y = END_YEAR;
-            m = 12;
-            d = 28;
-            state.playing = false;
-            clearInterval(intervalId);
-          }
-
-          state.year = y;
-          state.month = m;
-          state.day = d;
-          renderAll();
-        }, 900);
-      } else {
-        clearInterval(intervalId);
-      }
-
-      renderAll();
-    }
-
-    yearRange.addEventListener('input', e => {
-      state.year = Number(e.target.value);
-      renderAll();
+    })
+    .onGlobeClick(({ lat, lng }) => {
+      state.selectedCoords = { lat, lng };
+      state.selectedDisplayName = 'Selected area';
+      syncDateControls();
+      loadLocationData();
     });
 
-    yearNumber.addEventListener('input', e => {
-      let value = Number(e.target.value);
-      if (Number.isNaN(value)) return;
-      value = Math.max(START_YEAR, Math.min(END_YEAR, value));
-      state.year = value;
-      renderAll();
-    });
+  updateConflictLayer();
+  setStatusChips([{ text: 'Click a country, click the globe, or search a place' }]);
 
-    monthSelect.addEventListener('change', e => {
-      state.month = Number(e.target.value);
-      renderAll();
-    });
+  window.addEventListener('resize', () => {
+    world.width(el.clientWidth).height(el.clientHeight);
+  });
+}
 
-    daySelect.addEventListener('change', e => {
-      state.day = Number(e.target.value);
-      renderAll();
-    });
+function polygonCenter(feat) {
+  try {
+    const geom = feat.geometry;
+    let coords = [];
 
-    playBtn.addEventListener('click', togglePlay);
-
-    async function initGlobe() {
-      const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
-        .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-        .backgroundColor('#020817')
-        .width(document.getElementById('globeViz').clientWidth)
-        .height(document.getElementById('globeViz').clientHeight);
-
-      state.world = world;
-
-      const controls = world.controls();
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.3;
-
-      world.onPolygonClick(feat => {
-        state.selectedLocation = getCountryName(feat);
-        renderAll();
-      });
-
-      const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
-      const topo = await res.json();
-      state.countries = topojson.feature(topo, topo.objects.countries).features;
-
-      renderAll();
-
-      window.addEventListener('resize', () => {
-        const el = document.getElementById('globeViz');
-        world.width(el.clientWidth).height(el.clientHeight);
-      });
+    if (geom.type === 'Polygon') {
+      coords = geom.coordinates[0];
+    } else if (geom.type === 'MultiPolygon') {
+      coords = geom.coordinates[0][0];
+    } else {
+      return null;
     }
 
-    initGlobe().catch(err => {
-      globeCaption.textContent = 'Failed to load globe data.';
-      console.error(err);
-    });
-  </script>
+    let latSum = 0;
+    let lngSum = 0;
+    let count = 0;
+
+    for (const [lng, lat] of coords) {
+      lngSum += lng;
+      latSum += lat;
+      count += 1;
+    }
+
+    if (!count) return null;
+    return { lat: latSum / count, lng: lngSum / count };
+  } catch (e) {
+    return null;
+  }
+}
+
+syncDateControls();
+initGlobe().catch(err => {
+  globeCaption.textContent = 'Failed to load globe data.';
+  console.error(err);
+});
+    </script>
 </body>
 </html>
+```
+    
