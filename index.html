@@ -1,222 +1,164 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>WAR ROOM // GLOBAL INTELLIGENCE NODE</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    <meta charset="utf-8" />
+    <title>WAR ROOM // SUPREME COMMAND</title>
+    <script src="https://unpkg.com/three"></script>
+    <script src="https://unpkg.com/globe.gl"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            --bg: #020205;
+            --accent: #00f2ff;
+            --panel: rgba(10, 10, 15, 0.9);
+            --border: #1a1a2e;
+            --intel: #00ff41;
+        }
 
-    :root {
-      --bg: #050505;
-      --panel: #0a0a0c;
-      --accent: #00f2ff; /* Cyber Cyan */
-      --warn: #ff3e3e;   /* Alert Red */
-      --intel: #00ff41;  /* Matrix Green */
-      --border: #1a1a1f;
-      --text: #d1d1d6;
-    }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
 
-    * { box-sizing: border-box; font-family: 'JetBrains Mono', monospace; }
-    body { margin: 0; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        /* The Map Engine Container */
+        #globe-viz { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
 
-    /* Left Console */
-    .console { width: 480px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); z-index: 100; box-shadow: 10px 0 50px rgba(0,0,0,1); }
-    .status-header { padding: 25px; background: #000; border-bottom: 2px solid var(--border); }
-    .glitch-title { color: var(--accent); font-size: 18px; font-weight: 900; letter-spacing: 2px; margin: 0; text-transform: uppercase; }
-    
-    .search-input { width: 100%; background: #0f0f12; border: 1px solid var(--border); color: var(--intel); padding: 15px; font-size: 12px; outline: none; margin-top: 15px; border-radius: 2px; }
-    .search-input:focus { border-color: var(--accent); box-shadow: 0 0 10px rgba(0, 242, 255, 0.2); }
+        /* Overlays - War Room UI */
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; border: 20px solid transparent; border-image: radial-gradient(circle, transparent 70%, rgba(0, 242, 255, 0.05) 100%) 30; }
 
-    .feed { flex: 1; overflow-y: auto; padding: 20px; scrollbar-width: none; background: linear-gradient(to bottom, #0a0a0c, #050505); }
-    
-    /* Intelligence Item */
-    .intel-node { border-left: 2px solid var(--accent); background: rgba(255,255,255,0.02); margin-bottom: 20px; padding: 15px; position: relative; transition: 0.2s; border-radius: 0 4px 4px 0; }
-    .intel-node:hover { background: rgba(0, 242, 255, 0.05); transform: translateX(5px); }
-    .intel-meta { font-size: 9px; color: var(--muted); margin-bottom: 8px; display: flex; justify-content: space-between; }
-    .intel-header { font-size: 14px; font-weight: bold; color: #fff; margin-bottom: 8px; }
-    .intel-body { font-size: 11px; line-height: 1.6; color: #a1a1aa; }
-    
-    .view-btn { font-size: 10px; color: var(--accent); border: 1px solid var(--accent); padding: 4px 8px; margin-top: 12px; display: inline-block; text-decoration: none; text-transform: uppercase; }
+        .sidebar { pointer-events: auto; position: absolute; left: 20px; top: 20px; bottom: 20px; width: 400px; background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(10px); display: flex; flex-direction: column; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
 
-    /* Globe Viewport */
-    #viewport { flex: 1; position: relative; overflow: hidden; }
-    .hud { position: absolute; padding: 20px; pointer-events: none; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
-    .hud-top { display: flex; justify-content: space-between; }
-    .hud-box { background: rgba(0,0,0,0.8); border: 1px solid var(--border); padding: 10px 15px; font-size: 10px; color: var(--intel); backdrop-filter: blur(5px); }
-    
-    /* Timeline Control */
-    .timeline-wrap { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 500px; text-align: center; }
-    .year-readout { font-size: 24px; font-weight: bold; color: var(--accent); margin-bottom: 10px; text-shadow: 0 0 15px rgba(0,242,255,0.5); }
-    input[type=range] { width: 100%; height: 4px; background: #1a1a1f; appearance: none; outline: none; cursor: pointer; }
-    input[type=range]::-webkit-slider-thumb { appearance: none; width: 15px; height: 15px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 10px var(--accent); }
+        .header { padding: 20px; border-bottom: 1px solid var(--border); background: #000; }
+        .feed { flex: 1; overflow-y: auto; padding: 15px; font-size: 11px; scrollbar-width: none; }
+        
+        .intel-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 12px; margin-bottom: 10px; border-left: 3px solid var(--accent); }
+        .intel-card h4 { margin: 0 0 5px 0; color: var(--accent); font-size: 13px; }
 
-    /* Alert Overlay */
-    #alert-msg { color: var(--warn); display: none; }
-  </style>
+        /* Tactical HUD Elements */
+        .hud-stats { position: absolute; right: 20px; top: 20px; text-align: right; color: var(--intel); font-size: 10px; line-height: 1.5; }
+        .timeline-ctrl { position: absolute; bottom: 40px; right: 20px; width: 300px; pointer-events: auto; background: var(--panel); padding: 15px; border: 1px solid var(--border); }
+        
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--accent); }
+        input[type=text] { width: 100%; background: #000; border: 1px solid var(--border); color: var(--intel); padding: 10px; margin-top: 10px; outline: none; }
+
+        .scanline { width: 100%; height: 2px; background: rgba(0, 242, 255, 0.1); position: absolute; top: 0; z-index: 100; animation: scan 4s linear infinite; }
+        @keyframes scan { from { top: 0; } to { top: 100%; } }
+    </style>
 </head>
 <body>
 
-<div class="console">
-  <div class="status-header">
-    <div class="status-line" style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:10px;">
-      <span>ID: KING_OF_WORLD_01</span>
-      <span id="live-clock">00:00:00 UTC</span>
-    </div>
-    <h1 class="glitch-title">Global Command Node</h1>
-    <input type="text" id="masterSearch" class="search-input" placeholder="> INPUT COORDINATES OR TARGET NAME..." />
-    <div style="margin-top:10px; font-size:10px; opacity:0.6;" id="status-text">SYSTEM: STANDBY</div>
-  </div>
-  <div class="feed" id="intel-feed"></div>
-</div>
+<div class="scanline"></div>
 
-<div id="viewport">
-  <div id="globe-container"></div>
-  
-  <div class="hud">
-    <div class="hud-top">
-      <div class="hud-box">
-        SENSOR NET: ACTIVE<br/>
-        ENCRYPTION: AES-256<br/>
-        <span id="alert-msg">!! DATA BREACH DETECTED !!</span>
-      </div>
-      <div class="hud-box" style="text-align:right;">
-        LAT: <span id="hud-lat">0.00</span><br/>
-        LNG: <span id="hud-lng">0.00</span><br/>
-        ALT: 1.5R
-      </div>
-    </div>
-    
-    <div class="timeline-wrap">
-      <div class="year-readout" id="year-readout">2026 CE</div>
-      <input type="range" id="timeSlider" min="-2500" max="2026" value="2026" />
-    </div>
-  </div>
-</div>
+<div id="globe-viz"></div>
 
-<script src="https://unpkg.com/three"></script>
-<script src="https://unpkg.com/globe.gl"></script>
+<div class="ui-layer">
+    <div class="sidebar">
+        <div class="header">
+            <div style="font-size: 9px; color: var(--intel); margin-bottom: 5px;">> ENCRYPTED UPLINK: STABLE</div>
+            <h2 style="margin: 0; font-size: 18px; letter-spacing: 2px;">OMNI-COMMAND</h2>
+            <input type="text" id="search" placeholder="TARGET COORDS / CITY NAME" onkeypress="handleSearch(event)">
+        </div>
+        <div class="feed" id="feed">
+            <div style="opacity: 0.5; text-align: center; margin-top: 50px;">// STANDING BY FOR TARGET ACQUISITION...</div>
+        </div>
+    </div>
+
+    <div class="hud-stats">
+        [ SYSTEM STATUS: OPTIMAL ]<br>
+        [ TARGETING: <span id="cur-loc">GLOBAL</span> ]<br>
+        [ DATE: <span id="cur-date">2026.03.23</span> ]<br>
+        [ ZOOM: 1.5x ]
+    </div>
+
+    <div class="timeline-ctrl">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 5px;">
+            <span id="year-label">2026 CE</span>
+            <span>TEMPORAL SCRUB</span>
+        </div>
+        <input type="range" id="slider" min="-2000" max="2026" value="2026" oninput="updateTime(this.value)">
+    </div>
+</div>
 
 <script>
-  const state = { year: 2026, world: null };
-  const feed = document.getElementById('intel-feed');
-  const slider = document.getElementById('timeSlider');
-  const readout = document.getElementById('year-readout');
+    const feed = document.getElementById('feed');
+    let world;
 
-  // Core Intelligence Events
-  const WAR_RECORDS = [
-    { title: "Roman Sack of Jerusalem", lat: 31.76, lng: 35.21, year: 70, summary: "Total destruction of the Second Temple by Roman forces under Titus." },
-    { title: "D-Day Landings", lat: 49.37, lng: -0.87, year: 1944, summary: "Allied invasion of Normandy; largest seaborne invasion in history." },
-    { title: "Fall of Constantinople", lat: 41.00, lng: 28.97, year: 1453, summary: "Ottoman Empire captures the Byzantine capital, ending the Roman Empire." }
-  ];
+    // 1. Initialize the Visual Engine
+    function initGlobe() {
+        world = Globe()(document.getElementById('globe-viz'))
+            .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+            .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+            .backgroundColor('#020205')
+            .showAtmosphere(true)
+            .atmosphereColor('#00f2ff')
+            .atmosphereDayLightIntensity(0.1)
+            .onGlobeClick(({ lat, lng }) => {
+                world.pointOfView({ lat, lng, altitude: 1.5 }, 1000);
+                auditLocation(lat, lng);
+            });
 
-  function init() {
-    state.world = Globe()(document.getElementById('globe-container'))
-      .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
-      .backgroundColor('#050505')
-      .ringColor(() => '#00f2ff')
-      .ringMaxRadius(3)
-      .ringPropagationSpeed(1.5)
-      .onGlobeClick(({ lat, lng }) => {
-        document.getElementById('hud-lat').textContent = lat.toFixed(4);
-        document.getElementById('hud-lng').textContent = lng.toFixed(4);
-        executeWarRoomAudit(lat, lng);
-      });
-
-    // Load initial pins
-    state.world.ringsData(WAR_RECORDS.filter(r => r.year <= state.year));
-    
-    setInterval(updateClock, 1000);
-    window.addEventListener('resize', () => state.world.width(window.innerWidth - 480).height(window.innerHeight));
-  }
-
-  async function executeWarRoomAudit(lat, lng) {
-    document.getElementById('status-text').textContent = "SYSTEM: SCANNING COORDINATES...";
-    feed.innerHTML = '<p style="color:var(--accent)">> DECRYPTING LOCAL DATA STREAMS...</p>';
-
-    try {
-      // 1. Identification (Reverse Geocode)
-      const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`)
-        .then(r => r.json());
-      const locName = geo.address.city || geo.address.country || "RESTRICTED AREA";
-      
-      feed.innerHTML = `<h2 style="color:#fff; margin-bottom:5px;">TARGET: ${locName.toUpperCase()}</h2>
-                        <div style="font-size:10px; color:var(--intel); margin-bottom:20px;">[ VALIDATED COORDINATES ]</div>`;
-
-      // 2. Wikipedia Geosearch (The most reliable for historical records)
-      const wikiRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=5&format=json&origin=*`)
-        .then(r => r.json());
-
-      if (wikiRes.query?.geosearch) {
-        for (let item of wikiRes.query.geosearch) {
-          const detail = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`)
-            .then(r => r.json());
-          addIntelNode("ARCHIVE", detail.title, detail.extract, detail.content_urls.desktop.page);
-        }
-      }
-
-      // 3. News Dispatch (If modern era)
-      if (state.year > 2010) {
-        const news = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(locName)}&mode=artlist&format=json&maxrecords=3`)
-          .then(r => r.ok ? r.json() : {articles: []});
+        // Set initial view
+        world.pointOfView({ lat: 31.7, lng: 35.2, altitude: 2 });
         
-        if (news.articles) {
-          news.articles.forEach(a => {
-            addIntelNode("SIGNAL", a.title, "Live news intercept from local transmission towers.", a.url);
-          });
+        // Responsive resize
+        window.addEventListener('resize', () => {
+            world.width(window.innerWidth).height(window.innerHeight);
+        });
+    }
+
+    // 2. Intelligence Logic
+    async function auditLocation(lat, lng) {
+        document.getElementById('cur-loc').textContent = `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+        feed.innerHTML = '<div style="color: var(--accent)">> INTERCEPTING LOCAL SIGNALS...</div>';
+
+        try {
+            const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`).then(r => r.json());
+            const city = geo.address.city || geo.address.country || "UNKNOWN ZONE";
+            
+            feed.innerHTML = `<h3 style="margin-top:0">${city.toUpperCase()}</h3>`;
+
+            // Wikipedia Context
+            const wiki = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=4&format=json&origin=*`).then(r => r.json());
+            
+            if (wiki.query?.geosearch) {
+                for (let item of wiki.query.geosearch) {
+                    const d = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`).then(r => r.json());
+                    feed.innerHTML += `
+                        <div class="intel-card">
+                            <h4>${d.title}</h4>
+                            <div>${d.extract}</div>
+                            <a href="${d.content_urls.desktop.page}" target="_blank" style="color:var(--intel); font-size:9px; text-decoration:none;">[ OPEN ARCHIVE ]</a>
+                        </div>`;
+                }
+            }
+        } catch (e) {
+            feed.innerHTML = '<div style="color:red">> UPLINK ERROR: TIMEOUT</div>';
         }
-      }
-
-      document.getElementById('status-text').textContent = "SYSTEM: DATA AGGREGATED.";
-
-    } catch (e) {
-      console.error(e);
-      document.getElementById('status-text').textContent = "SYSTEM: UPLINK TIMEOUT";
-      feed.innerHTML = '<div style="color:var(--warn)">> ERR: ENCRYPTION HANDSHAKE FAILED. RE-SCANNING...</div>';
     }
-  }
 
-  function addIntelNode(type, title, text, link) {
-    const node = document.createElement('div');
-    node.className = 'intel-node';
-    node.innerHTML = `
-      <div class="intel-meta"><span>TYPE: ${type}</span><span>REF: ${Math.random().toString(16).substr(2,6).toUpperCase()}</span></div>
-      <div class="intel-header">${title}</div>
-      <div class="intel-body">${text}</div>
-      <a href="${link}" target="_blank" class="view-btn">Full Access</a>
-    `;
-    feed.appendChild(node);
-  }
-
-  function updateClock() {
-    const d = new Date();
-    document.getElementById('live-clock').textContent = d.toISOString().split('T')[1].split('.')[0] + " UTC";
-  }
-
-  slider.oninput = (e) => {
-    state.year = parseInt(e.target.value);
-    readout.textContent = state.year < 0 ? Math.abs(state.year) + " BCE" : state.year + " CE";
-    
-    // Texture Shift
-    const tex = state.year < 1850 ? '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg' : '//unpkg.com/three-globe/example/img/earth-dark.jpg';
-    state.world.globeImageUrl(tex);
-
-    // Update Rings
-    state.world.ringsData(WAR_RECORDS.filter(r => r.year <= state.year));
-  };
-
-  document.getElementById('masterSearch').onkeypress = async (e) => {
-    if (e.key === 'Enter') {
-      const q = e.target.value;
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`).then(r => r.json());
-      if (res[0]) {
-        state.world.pointOfView({ lat: parseFloat(res[0].lat), lng: parseFloat(res[0].lon), altitude: 1.5 }, 2000);
-        executeWarRoomAudit(res[0].lat, res[0].lon);
-      }
+    // 3. Command Functions
+    function updateTime(val) {
+        document.getElementById('year-label').textContent = val < 0 ? Math.abs(val) + " BCE" : val + " CE";
+        document.getElementById('cur-date').textContent = val;
+        
+        // Visually change the map based on era
+        const tex = val < 1850 ? '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg' : '//unpkg.com/three-globe/example/img/earth-dark.jpg';
+        world.globeImageUrl(tex);
     }
-  };
 
-  init();
+    async function handleSearch(e) {
+        if (e.key === 'Enter') {
+            const q = e.target.value;
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`).then(r => r.json());
+            if (res[0]) {
+                const lat = parseFloat(res[0].lat);
+                const lng = parseFloat(res[0].lon);
+                world.pointOfView({ lat, lng, altitude: 1.5 }, 2000);
+                auditLocation(lat, lng);
+            }
+        }
+    }
+
+    // Launch
+    initGlobe();
 </script>
 </body>
 </html>
