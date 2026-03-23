@@ -1,469 +1,166 @@
-async function wikipediaGeoSearch(lat, lng) {
-  const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&list=geosearch&gscoord=${encodeURIComponent(lat + '|' + lng)}&gsradius=10000&gslimit=5&format=json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Wikipedia geosearch failed');
-  const data = await res.json();
-  return data?.query?.geosearch || [];
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>History Repeats Globe</title>
+
+<style>
+body {
+  margin:0;
+  font-family:Arial;
+  background:#020617;
+  color:white;
 }
 
-async function wikipediaSummary(title) {
-  const safe = slugifyWikipediaTitle(title);
-  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${safe}`;
-  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-  if (!res.ok) throw new Error('Wikipedia summary failed');
-  return await res.json();
+.container {
+  display:grid;
+  grid-template-columns:70% 30%;
+  height:100vh;
 }
 
-async function wikipediaSearch(query) {
-  const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Wikipedia search failed');
-  const data = await res.json();
-  return data?.query?.search || [];
+#globe {
+  width:100%;
+  height:100%;
 }
 
-async function gdeltRecentNewsSearch(place, country) {
-  const query = [place, country].filter(Boolean).map(v => `"${v}"`).join(' OR ');
-  if (!query) return [];
-
-  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&maxrecords=8&format=json&sort=datedesc`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('GDELT request failed');
-  const data = await res.json();
-
-  if (!data || !data.articles || !Array.isArray(data.articles)) {
-    return [];
-  }
-
-  return data.articles.map((article, index) => ({
-    title: article.title || `News item ${index + 1}`,
-    summary: `Recent coverage connected to ${place || country}.`,
-    date: article.seendate || 'Recent',
-    region: [place, country].filter(Boolean).join(', '),
-    tags: ['news', 'recent', 'gdelt'],
-    badge: 'News',
-    badgeClass: 'high',
-    sourceMode: 'news',
-    sources: [
-      ...(article.url ? [{ label: article.domain || article.url, url: article.url }] : []),
-      { label: 'GDELT query', url }
-    ]
-  }));
+.panel {
+  padding:15px;
+  overflow:auto;
+  background:#0f172a;
 }
 
-async function buildHistoricalFallback(place, country, lat, lng, year) {
-  const cards = [];
-  const seen = new Set();
+input, select, button {
+  padding:8px;
+  margin:5px 0;
+  width:100%;
+}
 
-  try {
-    const nearby = await wikipediaGeoSearch(lat, lng);
-    if (nearby.length) {
-      const best = nearby[0];
-      const summary = await wikipediaSummary(best.title);
-      cards.push({
-        title: summary.title || best.title,
-        summary: summary.extract || `Nearby historical or geographic reference for ${best.title}.`,
-        date: `Reference context for ${year <= 0 ? `${Math.abs(year) + 1} BCE` : `${year} CE`}`,
-        region: [place, country].filter(Boolean).join(', '),
-        tags: ['geography', 'reference', 'wikipedia'],
-        badge: 'Historical',
-        badgeClass: 'medium',
-        sourceMode: 'history',
-        sources: [
-          { label: 'Wikipedia summary', url: summary.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${slugifyWikipediaTitle(best.title)}` }
-        ]
-      });
-      seen.add(best.title);
-    }
-  } catch (err) {}
+.event {
+  background:#020617;
+  padding:10px;
+  margin:10px 0;
+  border-radius:8px;
+}
+</style>
+</head>
 
-  const queries = [
-    `${place} history ${year}`,
-    `${country} history ${year}`,
-    `${place} ${year}`,
-    `${country} ${year}`,
-    `${place} history`,
-    `${country} history`
-  ].filter(Boolean);
+<body>
 
-  for (const q of queries) {
-    try {
-      const results = await wikipediaSearch(q);
-      if (results && results.length) {
-        const picked = results.slice(0, 2);
-        for (const item of picked) {
-          if (seen.has(item.title)) continue;
-          seen.add(item.title);
+<div style="padding:10px;">
+  <h2>History Globe</h2>
 
-          let summaryText = item.snippet
-            ? item.snippet.replace(/<[^>]+>/g, '')
-            : `Historical search result related to ${q}.`;
+  <input id="search" placeholder="Search location..." />
+  
+  <input id="year" type="number" value="2026" />
+  
+  <select id="month"></select>
+  <select id="day"></select>
+</div>
 
-          let pageUrl = `https://en.wikipedia.org/wiki/${slugifyWikipediaTitle(item.title)}`;
+<div class="container">
+  <div id="globe"></div>
 
-          try {
-            const summary = await wikipediaSummary(item.title);
-            if (summary?.extract) summaryText = summary.extract;
-            if (summary?.content_urls?.desktop?.page) pageUrl = summary.content_urls.desktop.page;
-          } catch (e) {}
+  <div class="panel">
+    <h2 id="location">Click on globe</h2>
+    <div id="results"></div>
+  </div>
+</div>
 
-          cards.push({
-            title: item.title,
-            summary: summaryText,
-            date: `Historical reference for ${year <= 0 ? `${Math.abs(year) + 1} BCE` : `${year} CE`}`,
-            region: [place, country].filter(Boolean).join(', '),
-            tags: ['history', 'encyclopedic', 'wikipedia-search'],
-            badge: 'Historical',
-            badgeClass: 'medium',
-            sourceMode: 'history',
-            sources: [{ label: 'Wikipedia page', url: pageUrl }]
-          });
+<script src="https://unpkg.com/three"></script>
+<script src="https://unpkg.com/globe.gl"></script>
 
-          if (cards.length >= 5) return cards;
-        }
+<script>
+
+const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+for(let i=1;i<=12;i++){
+  month.innerHTML += `<option value="${i}">${months[i-1]}</option>`
+}
+
+for(let i=1;i<=28;i++){
+  day.innerHTML += `<option value="${i}">${i}</option>`
+}
+
+function formatDate(){
+  return `${year.value}-${month.value}-${day.value}`
+}
+
+const globe = Globe()(document.getElementById('globe'))
+  .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+
+globe.onGlobeClick(async ({lat,lng})=>{
+  loadLocation(lat,lng)
+})
+
+async function loadLocation(lat,lng){
+
+  location.innerText="Loading..."
+
+  const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+  const geoData = await geo.json()
+
+  const place = geoData.display_name
+  location.innerText = place
+
+  loadData(place)
+}
+
+async function loadData(place){
+
+  results.innerHTML = "Loading..."
+
+  const yearVal = year.value
+
+  // NEWS (recent only)
+  if(yearVal >= 2017){
+    try{
+      const news = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${place}&mode=artlist&maxrecords=5&format=json`)
+      const data = await news.json()
+
+      if(data.articles && data.articles.length){
+        results.innerHTML = "<h3>News</h3>"
+        data.articles.forEach(a=>{
+          results.innerHTML += `
+          <div class="event">
+            <b>${a.title}</b><br/>
+            <a href="${a.url}" target="_blank">Source</a>
+          </div>`
+        })
+        return
       }
-    } catch (err) {}
+    }catch(e){}
   }
 
-  return cards;
+  // FALLBACK HISTORY
+  const wiki = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${place}`)
+  const wikiData = await wiki.json()
+
+  results.innerHTML = `
+    <h3>Historical Info</h3>
+    <div class="event">
+      <b>${wikiData.title}</b><br/>
+      ${wikiData.extract || "No data found"}
+      <br/>
+      <a href="${wikiData.content_urls?.desktop?.page}" target="_blank">Read more</a>
+    </div>
+  `
 }
 
-async function loadLocationData() {
-  const token = ++state.loadingToken;
-  const lat = state.selectedCoords?.lat;
-  const lng = state.selectedCoords?.lng;
+// SEARCH
+search.addEventListener("keypress", async (e)=>{
+  if(e.key==="Enter"){
+    const q = search.value
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
+    const data = await res.json()
 
-  if (lat == null || lng == null) return;
-
-  locationTitle.textContent = state.selectedDisplayName || state.selectedCountry || 'Loading...';
-  patternText.textContent = 'Looking up the selected place...';
-  renderCards([{
-    title: 'Loading',
-    summary: 'Trying recent/news-style coverage first, then historical fallback...',
-    badge: 'Loading',
-    badgeClass: 'low',
-    sources: []
-  }]);
-
-  const year = state.year;
-
-  try {
-    const geo = await reverseGeocode(lat, lng);
-    if (token !== state.loadingToken) return;
-
-    state.selectedCountry = geo.country || '';
-    state.selectedDisplayName = geo.city || geo.displayName || geo.country || 'Selected area';
-
-    locationTitle.textContent = state.selectedDisplayName;
-    updateCaption('lookup in progress');
-    updateClock();
-
-    const status = [
-      { text: `Place: ${state.selectedDisplayName}` },
-      ...(state.selectedCountry ? [{ text: `Country: ${state.selectedCountry}` }] : []),
-      { text: `Date: ${formatCurrentDateText()}` }
-    ];
-
-    let cards = [];
-    let primaryMode = '';
-
-    if (year >= 2017) {
-      try {
-        const news = await gdeltRecentNewsSearch(state.selectedDisplayName, state.selectedCountry);
-        if (token !== state.loadingToken) return;
-        if (news.length) {
-          cards = news;
-          primaryMode = 'news';
-        }
-      } catch (err) {}
+    if(data[0]){
+      loadLocation(data[0].lat,data[0].lon)
     }
-
-    if (!cards.length) {
-      const historical = await buildHistoricalFallback(
-        state.selectedDisplayName,
-        state.selectedCountry,
-        lat,
-        lng,
-        year
-      );
-      if (token !== state.loadingToken) return;
-      cards = historical;
-      if (historical.length) primaryMode = 'history';
-    }
-
-    const seed = getSeedMatchesForLocation();
-    if (seed.length) {
-      cards = [...seed, ...cards].slice(0, 8);
-      if (!primaryMode) primaryMode = 'seed';
-    }
-
-    if (!cards.length) {
-      cards = [{
-        title: 'No exact match found',
-        summary: 'No exact result was found from the current public-source chain for this place. Try a nearby city, broader region, or expand the custom dataset later.',
-        date: formatCurrentDateText(),
-        region: [state.selectedDisplayName, state.selectedCountry].filter(Boolean).join(', '),
-        tags: ['no-match'],
-        badge: 'Sparse data',
-        badgeClass: 'low',
-        sourceMode: 'warning',
-        sources: []
-      }];
-      primaryMode = 'warning';
-    }
-
-    if (primaryMode === 'news') {
-      status.push({ text: 'Source mode: News', kind: 'news' });
-      patternText.textContent = 'Showing recent/news-style coverage first for this location, with historical fallback used when needed.';
-    } else if (primaryMode === 'history') {
-      status.push({ text: 'Source mode: Historical', kind: 'history' });
-      patternText.textContent = 'No strong recent/news result was found, so the panel is showing historical or encyclopedic fallback material.';
-    } else if (primaryMode === 'seed') {
-      status.push({ text: 'Source mode: Seed data', kind: 'seed' });
-      patternText.textContent = 'Showing curated seed records for this location and date range.';
-    } else {
-      status.push({ text: 'Source mode: Sparse', kind: 'warning' });
-      patternText.textContent = 'This place/date combination has sparse coverage in the current public-source chain.';
-    }
-
-    if (year < 2017) {
-      status.push({ text: 'Older dates lean historical', kind: 'warning' });
-    }
-
-    setStatusChips(status);
-    renderCards(cards);
-    updateCaption(primaryMode || 'loaded');
-  } catch (err) {
-    if (token !== state.loadingToken) return;
-    setStatusChips([{ text: 'Lookup failed', kind: 'warning' }]);
-    renderCards([{
-      title: 'Lookup failed',
-      summary: 'The app could not load data for this location right now. Try again or choose a nearby major city.',
-      badge: 'Error',
-      badgeClass: 'critical',
-      sources: []
-    }]);
-    patternText.textContent = 'The public-source lookup failed for this request.';
-    updateCaption('lookup failed');
-    console.error(err);
   }
-}
+})
 
-function syncDateControls() {
-  yearRange.value = String(state.year);
-  yearNumber.value = String(state.year);
-  monthSelect.value = String(state.month);
-  daySelect.value = String(state.day);
-  updateClock();
-}
+</script>
 
-function getCountryName(feat) {
-  return feat.properties?.name || feat.properties?.NAME || feat.properties?.ADMIN || 'Unknown';
-}
-
-function updateConflictLayer() {
-  if (!state.world) return;
-
-  const cd = currentDate();
-  const activeEvents = seedHistoricalEvents.filter(e => isDateWithinRange(cd, e.start, e.end));
-  const activeCountries = new Set();
-  activeEvents.forEach(event => event.modernCountries.forEach(c => activeCountries.add(c)));
-
-  const points = activeEvents.map(event => ({
-    id: event.id,
-    lat: event.latitude,
-    lng: event.longitude,
-    color: severityColor[event.severity],
-    size: event.severity === 'critical' ? 0.4 : event.severity === 'high' ? 0.3 : 0.22,
-    title: event.title
-  }));
-
-  state.world
-    .polygonsData(state.countries)
-    .polygonCapColor(feat => {
-      const name = getCountryName(feat);
-      return activeCountries.has(name)
-        ? 'rgba(239,68,68,0.8)'
-        : 'rgba(59,130,246,0.08)';
-    })
-    .polygonSideColor(() => 'rgba(59,130,246,0.06)')
-    .polygonStrokeColor(() => '#334155')
-    .polygonAltitude(feat => activeCountries.has(getCountryName(feat)) ? 0.03 : 0.01)
-    .pointsData(points)
-    .pointLat('lat')
-    .pointLng('lng')
-    .pointColor('color')
-    .pointAltitude('size')
-    .pointRadius(0.35)
-    .pointLabel(point => point.title)
-    .onPointClick(point => {
-      const event = seedHistoricalEvents.find(e => e.id === point.id);
-      if (event) {
-        state.selectedCoords = { lat: event.latitude, lng: event.longitude };
-        state.selectedCountry = event.modernCountries[0] || '';
-        state.selectedDisplayName = event.regionLabel;
-        syncDateControls();
-        loadLocationData();
-      }
-    });
-
-  updateCaption(`${activeEvents.length} seed conflict markers`);
-}
-
-function onDateChange() {
-  syncDateControls();
-  updateConflictLayer();
-  if (state.selectedCoords) {
-    loadLocationData();
-  }
-}
-
-yearRange.addEventListener('input', e => {
-  state.year = Number(e.target.value);
-  onDateChange();
-});
-
-yearNumber.addEventListener('input', e => {
-  let value = Number(e.target.value);
-  if (Number.isNaN(value)) return;
-  value = Math.max(START_YEAR, Math.min(END_YEAR, value));
-  state.year = value;
-  onDateChange();
-});
-
-monthSelect.addEventListener('change', e => {
-  state.month = Number(e.target.value);
-  onDateChange();
-});
-
-daySelect.addEventListener('change', e => {
-  state.day = Number(e.target.value);
-  onDateChange();
-});
-
-async function runSearch() {
-  const query = searchInput.value.trim();
-  if (!query) return;
-
-  setStatusChips([{ text: 'Searching location...' }]);
-  patternText.textContent = 'Resolving the searched place...';
-
-  try {
-    const result = await forwardGeocode(query);
-    state.selectedCoords = { lat: result.lat, lng: result.lng };
-    state.selectedDisplayName = result.displayName || query;
-
-    if (state.world) {
-      state.world.pointOfView({ lat: result.lat, lng: result.lng, altitude: 1.8 }, 1200);
-    }
-
-    await loadLocationData();
-  } catch (err) {
-    setStatusChips([{ text: 'Search failed', kind: 'warning' }]);
-    renderCards([{
-      title: 'Location not found',
-      summary: 'The search did not find a matching location. Try a more specific place name.',
-      badge: 'Search',
-      badgeClass: 'medium',
-      sources: []
-    }]);
-    patternText.textContent = 'Search could not resolve that location.';
-  }
-}
-
-searchBtn.addEventListener('click', runSearch);
-searchInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') runSearch();
-});
-
-async function initGlobe() {
-  const el = document.getElementById('globeViz');
-
-  const world = Globe()(el)
-    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
-    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-    .backgroundColor('#020817')
-    .width(el.clientWidth)
-    .height(el.clientHeight);
-
-  state.world = world;
-
-  const controls = world.controls();
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.25;
-
-  const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
-  const topo = await res.json();
-  state.countries = topojson.feature(topo, topo.objects.countries).features;
-
-  world
-    .polygonsData(state.countries)
-    .polygonCapColor(() => 'rgba(59,130,246,0.08)')
-    .polygonSideColor(() => 'rgba(59,130,246,0.06)')
-    .polygonStrokeColor(() => '#334155')
-    .polygonAltitude(() => 0.01)
-    .onPolygonClick(feat => {
-      const center = polygonCenter(feat);
-      if (center) {
-        state.selectedCoords = { lat: center.lat, lng: center.lng };
-        state.selectedCountry = getCountryName(feat);
-        state.selectedDisplayName = getCountryName(feat);
-        syncDateControls();
-        loadLocationData();
-      }
-    })
-    .onGlobeClick(({ lat, lng }) => {
-      state.selectedCoords = { lat, lng };
-      state.selectedDisplayName = 'Selected area';
-      syncDateControls();
-      loadLocationData();
-    });
-
-  updateConflictLayer();
-  setStatusChips([{ text: 'Click a country, click the globe, or search a place' }]);
-
-  window.addEventListener('resize', () => {
-    world.width(el.clientWidth).height(el.clientHeight);
-  });
-}
-
-function polygonCenter(feat) {
-  try {
-    const geom = feat.geometry;
-    let coords = [];
-
-    if (geom.type === 'Polygon') {
-      coords = geom.coordinates[0];
-    } else if (geom.type === 'MultiPolygon') {
-      coords = geom.coordinates[0][0];
-    } else {
-      return null;
-    }
-
-    let latSum = 0;
-    let lngSum = 0;
-    let count = 0;
-
-    for (const [lng, lat] of coords) {
-      lngSum += lng;
-      latSum += lat;
-      count += 1;
-    }
-
-    if (!count) return null;
-    return { lat: latSum / count, lng: lngSum / count };
-  } catch (e) {
-    return null;
-  }
-}
-
-syncDateControls();
-initGlobe().catch(err => {
-  globeCaption.textContent = 'Failed to load globe data.';
-  console.error(err);
-});
-    </script>
 </body>
 </html>
-```
-    
