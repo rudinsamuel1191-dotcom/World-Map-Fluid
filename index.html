@@ -1,4 +1,4 @@
- <!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -7,21 +7,70 @@
     <script src="https://unpkg.com/globe.gl@2.32.2/dist/globe.gl.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-        :root { --bg: #020205; --accent: #00f2ff; --panel: rgba(10, 10, 15, 0.9); --intel: #00ff41; --border: #1a1a2e; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        
+        :root { 
+            --bg: #020205; 
+            --accent: #00f2ff; 
+            --panel: rgba(10, 10, 15, 0.9); 
+            --intel: #00ff41; 
+            --border: #1a1a2e; 
+        }
+
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: var(--bg); color: #fff; 
+            font-family: 'JetBrains Mono', monospace; overflow: hidden; 
+        }
+
         #globe-viz { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        .sidebar { pointer-events: auto; position: absolute; left: 20px; top: 20px; bottom: 20px; width: 380px; background: var(--panel); border-right: 2px solid var(--accent); backdrop-filter: blur(10px); display: flex; flex-direction: column; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
+
+        .sidebar { 
+            pointer-events: auto; position: absolute; left: 20px; top: 20px; bottom: 20px; 
+            width: 380px; background: var(--panel); border-right: 2px solid var(--accent); 
+            backdrop-filter: blur(10px); display: flex; flex-direction: column; 
+            box-shadow: 0 0 50px rgba(0,0,0,0.8); 
+        }
+
         .header { padding: 20px; background: #000; border-bottom: 1px solid var(--border); }
-        .feed { flex: 1; overflow-y: auto; padding: 20px; scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
-        .intel-card { background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); padding: 12px; margin-bottom: 15px; font-size: 11px; transition: 0.3s; }
+
+        .feed { 
+            flex: 1; overflow-y: auto; padding: 20px; 
+            scrollbar-width: thin; scrollbar-color: var(--accent) transparent; 
+        }
+
+        .intel-card { 
+            background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); 
+            padding: 12px; margin-bottom: 15px; font-size: 11px; transition: 0.3s; 
+        }
+
         .intel-card:hover { background: rgba(0, 242, 255, 0.1); }
+
         .intel-card h4 { margin: 0 0 5px 0; color: var(--accent); text-transform: uppercase; font-size: 12px; }
+
         .intel-card p { margin: 5px 0; color: #ccc; line-height: 1.4; }
-        .intel-card a { color: var(--intel); text-decoration: none; font-size: 10px; border: 1px solid var(--intel); padding: 3px 6px; margin-top: 8px; display: inline-block; background: rgba(0,0,0,0.4); }
-        .hud-stats { pointer-events: auto; position: absolute; right: 20px; top: 20px; text-align: right; color: var(--intel); font-size: 10px; padding: 12px; border: 1px solid var(--border); background: rgba(0,0,0,0.8); }
-        .timeline-ctrl { position: absolute; bottom: 30px; left: 420px; right: 40px; pointer-events: auto; background: var(--panel); padding: 20px; border: 1px solid var(--border); }
+
+        .intel-card a { 
+            color: var(--intel); text-decoration: none; font-size: 10px; 
+            border: 1px solid var(--intel); padding: 3px 6px; margin-top: 8px; 
+            display: inline-block; background: rgba(0,0,0,0.4); 
+        }
+
+        .hud-stats { 
+            pointer-events: auto; position: absolute; right: 20px; top: 20px; 
+            text-align: right; color: var(--intel); font-size: 10px; padding: 12px; 
+            border: 1px solid var(--border); background: rgba(0,0,0,0.8); 
+        }
+
+        .timeline-ctrl { 
+            position: absolute; bottom: 30px; left: 420px; right: 40px; 
+            pointer-events: auto; background: var(--panel); padding: 20px; 
+            border: 1px solid var(--border); 
+        }
+
         input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
         .loading-shimmer { color: var(--accent); font-style: italic; animation: blink 1s infinite; }
         @keyframes blink { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
     </style>
@@ -61,12 +110,8 @@
     let world;
     let selectedYear = 2026;
     
-    // Fallback list of proxies for GitHub Pages
-    const PROXIES = [
-        "https://corsproxy.io/?",
-        "https://api.allorigins.win/raw?url="
-    ];
-    let activeProxyIndex = 0;
+    // Bypass CORS for GitHub Pages
+    const NEWS_PROXY = "https://api.allorigins.win/raw?url=";
 
     function initGlobe() {
         world = Globe()(document.getElementById('globe-viz'))
@@ -107,20 +152,22 @@
         feed.innerHTML = `<div class="loading-shimmer">> INTERCEPTING DATA FOR YEAR ${selectedYear}...</div>`;
 
         try {
-            // 1. Reverse Geocoding via OSM (Requires https://)
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+            // 1. Get City Name
+            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+                headers: { 'User-Agent': 'GodsEyeApp/1.0' }
+            });
             const geo = await geoRes.json();
-            const city = geo.address.city || geo.address.town || geo.address.village || geo.address.state || "Neutral Zone";
+            const city = geo.address.city || geo.address.town || geo.address.village || geo.address.state || "Neutral Sector";
             
             feed.innerHTML = `<h3 style="color:var(--accent); margin-bottom:20px; font-size:16px;">${city.toUpperCase()}</h3>`;
 
-            // 2. Fetch Wikipedia History (Using explicit origin=* for GitHub Pages)
-            const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=4&format=json&origin=*`;
+            // 2. Fetch Wikipedia History (Uses standard CORS origin allowance)
+            const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=3&format=json&origin=*`;
             const wikiRes = await fetch(wikiUrl);
             const wikiData = await wikiRes.json();
 
             if (wikiData.query?.geosearch?.length) {
-                feed.innerHTML += `<div style="font-size:9px; color:#666; margin-bottom:10px;">TEMPORAL INTEL RECORDS:</div>`;
+                feed.innerHTML += `<div style="font-size:9px; color:#666; margin-bottom:10px;">TEMPORAL ARCHIVES:</div>`;
                 
                 for (let item of wikiData.query.geosearch) {
                     const sRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}?origin=*`);
@@ -129,13 +176,15 @@
                     feed.innerHTML += `
                         <div class="intel-card">
                             <h4>${s.title}</h4>
-                            <p>${s.extract ? s.extract.substring(0, 160) + "..." : "No archival summary."}</p>
+                            <p>${s.extract ? s.extract.substring(0, 150) + "..." : "No archival text."}</p>
                             <a href="${s.content_urls?.desktop?.page || '#'}" target="_blank">[ OPEN ARCHIVE ]</a>
                         </div>`;
                 }
+            } else {
+                feed.innerHTML += `<div class="intel-card" style="opacity:0.6">No historical database located.</div>`;
             }
 
-            // 3. Live News Feed (Filtered by Year)
+            // 3. Live News Feed (Only if slider is set to 2025/2026)
             if (selectedYear >= 2025) {
                 feed.innerHTML += `<div style="font-size:9px; color:#666; margin:20px 0 10px 0;">BROADCAST INTERCEPT:</div>`;
                 const news = await fetchNews(city);
@@ -143,8 +192,8 @@
             } else {
                 feed.innerHTML += `
                     <div class="intel-card" style="border-color:#ff0;">
-                        <h4>ARCHIVE LOCKOUT</h4>
-                        <p>Live digital news interceptions are unavailable for ${selectedYear}. Displaying static historical data only.</p>
+                        <h4>TEMPORAL LOCKOUT</h4>
+                        <p>Live digital news interceptions are locked for the year ${selectedYear}.</p>
                     </div>`;
             }
             
@@ -158,8 +207,9 @@
             
             feed.innerHTML += `
                 <div class="intel-card" style="border-color:red;">
-                    <h4>SIGNAL ERROR</h4>
-                    <p>The network connection timed out or blocked the request. Try clicking on a coastal city or verify repository settings.</p>
+                    <h4>SIGNAL DROPPED</h4>
+                    <p>Security protocol or network timeout blocked the server request.</p>
+                    <button onclick="triggerAudit(${lat}, ${lng})" style="background:none; border:1px solid #ff0; color:#ff0; font-family:inherit; padding:5px; cursor:pointer; font-size:10px; margin-top:5px;">[ RE-ATTEMPT LINK ]</button>
                 </div>`;
         }
     }
@@ -167,17 +217,9 @@
     async function fetchNews(city) {
         const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(city)}&hl=en-US&gl=US&ceid=US:en`;
         
-        // Attempt first proxy
         try {
-            const res = await fetch(PROXIES[activeProxyIndex] + encodeURIComponent(rssUrl));
-            const text = await res.text();
-            
-            // If allorigins wrapper is used, clean it
-            let xmlText = text;
-            if (activeProxyIndex === 1) {
-                const json = JSON.parse(text);
-                xmlText = json.contents;
-            }
+            const res = await fetch(NEWS_PROXY + encodeURIComponent(rssUrl));
+            const xmlText = await res.text();
 
             const xml = new DOMParser().parseFromString(xmlText, "text/xml");
             const items = xml.querySelectorAll("item");
@@ -185,22 +227,21 @@
             let html = "";
             for (let i = 0; i < 3; i++) {
                 if (!items[i]) break;
+                const title = items[i].querySelector("title").textContent;
+                const link = items[i].querySelector("link").textContent;
                 html += `
                     <div class="intel-card" style="border-left: 3px solid #ff0;">
-                        <h4 style="color:#ff0;">${items[i].querySelector("title").textContent}</h4>
-                        <a href="${items[i].querySelector("link").textContent}" target="_blank">[ ACCESS REPORT ]</a>
+                        <h4 style="color:#ff0;">${title}</h4>
+                        <a href="${link}" target="_blank">[ READ REPORT ]</a>
                     </div>`;
             }
-            return html || "No recent broadcasts found.";
+            return html || "No recent broadcasts intercepted.";
         } catch (e) {
-            // Shift to backup proxy for next time
-            activeProxyIndex = (activeProxyIndex + 1) % PROXIES.length;
-            
             return `
                 <div class="intel-card" style="border-color:#ff0;">
                     <h4>UPLINK DISTORTION</h4>
-                    <p>Standard automated intercept failed. Manual connection required.</p>
-                    <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank">[ LAUNCH EXTERNAL INTEL ]</a>
+                    <p>Standard automated intercept failed to parse XML.</p>
+                    <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank">[ EXTERNAL INTEL LAUNCH ]</a>
                 </div>`;
         }
     }
@@ -208,4 +249,4 @@
     initGlobe();
 </script>
 </body>
-</html>   
+</html>
