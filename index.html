@@ -3,192 +3,189 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Internal Intelligence Node</title>
+  <title>Omni-Archive Pro: Global Search & Temporal Sync</title>
   <style>
     :root {
-      --bg: #0a0a0b;
-      --panel: #141417;
-      --accent: #3b82f6;
-      --text: #e4e4e7;
-      --muted: #71717a;
-      --border: #27272a;
-      --intel: #10b981;
+      --bg: #030712;
+      --panel: #111827;
+      --accent: #60a5fa;
+      --text: #f9fafb;
+      --muted: #9ca3af;
+      --border: rgba(255, 255, 255, 0.08);
+      --glass: rgba(31, 41, 55, 0.5);
     }
 
-    * { box-sizing: border-box; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
-    body { margin: 0; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+    * { box-sizing: border-box; transition: all 0.2s ease-out; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; display: flex; height: 100vh; overflow: hidden; }
     
-    /* Console Sidebar */
-    .console { width: 450px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); z-index: 100; }
-    .terminal-header { padding: 20px; border-bottom: 1px solid var(--border); background: #000; }
-    .status-line { font-size: 10px; color: var(--intel); text-transform: uppercase; margin-bottom: 10px; display: flex; justify-content: space-between; }
+    /* Sidebar */
+    .sidebar { width: 420px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); z-index: 100; box-shadow: 20px 0 50px rgba(0,0,0,0.5); }
+    .header { padding: 24px; border-bottom: 1px solid var(--border); background: #0f172a; }
+    .search-box { position: relative; margin-top: 15px; }
+    #globalSearch { width: 100%; padding: 12px 40px 12px 15px; background: #000; border: 1px solid var(--accent); border-radius: 8px; color: #fff; font-size: 14px; outline: none; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2); }
     
-    .search-input { width: 100%; background: #000; border: 1px solid var(--border); color: var(--intel); padding: 12px; font-size: 13px; outline: none; margin-bottom: 15px; }
-    .search-input:focus { border-color: var(--accent); }
+    .content { flex: 1; overflow-y: auto; padding: 20px; background: linear-gradient(to bottom, #111827, #030712); }
+    
+    /* Globe Section */
+    #globe-wrapper { flex: 1; position: relative; }
+    #info-overlay { position: absolute; top: 20px; right: 20px; background: var(--glass); backdrop-filter: blur(12px); padding: 10px 20px; border-radius: 30px; border: 1px solid var(--border); font-size: 12px; pointer-events: none; }
 
-    .feed-container { flex: 1; overflow-y: auto; padding: 15px; background: #0c0c0e; scrollbar-width: none; }
+    /* Results */
+    .card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 20px; border-radius: 12px; margin-bottom: 15px; border-left: 2px solid transparent; }
+    .card:hover { border-left-color: var(--accent); background: rgba(255,255,255,0.05); transform: translateX(5px); }
+    .tag { font-size: 10px; padding: 4px 10px; border-radius: 5px; text-transform: uppercase; font-weight: 800; display: inline-block; margin-bottom: 12px; letter-spacing: 0.5px; }
+    .tag-event { background: #ef4444; color: white; }
+    .tag-wiki { background: #3b82f6; color: white; }
+    .tag-news { background: #10b981; color: white; }
     
-    /* Intelligence Cards */
-    .intel-card { background: #18181b; border: 1px solid var(--border); padding: 15px; border-radius: 4px; margin-bottom: 12px; position: relative; overflow: hidden; }
-    .intel-card::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 3px; background: var(--accent); }
-    .intel-type { font-size: 9px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
-    .intel-title { font-size: 15px; font-weight: bold; margin: 0 0 10px 0; color: #fff; }
-    .intel-body { font-size: 12px; line-height: 1.5; color: var(--text); margin-bottom: 10px; }
-    
-    .action-btn { font-size: 11px; color: var(--accent); text-decoration: none; border: 1px solid var(--accent); padding: 4px 10px; border-radius: 3px; display: inline-block; }
-    .action-btn:hover { background: var(--accent); color: #000; }
+    .btn { display: block; width: 100%; text-align: center; background: #1e293b; color: white; text-decoration: none; padding: 10px; border-radius: 6px; font-size: 13px; margin-top: 15px; border: 1px solid var(--border); }
+    .btn:hover { background: var(--accent); color: #000; font-weight: bold; }
 
-    /* Main Globe View */
-    #viewport { flex: 1; position: relative; }
-    .hud-overlay { position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none; }
-    .hud-stat { font-size: 12px; color: var(--intel); margin-bottom: 5px; background: rgba(0,0,0,0.7); padding: 4px 10px; }
-
-    /* Timeline Scrub */
-    .timeline-footer { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 60%; background: rgba(0,0,0,0.8); padding: 15px 30px; border-radius: 50px; border: 1px solid var(--border); backdrop-filter: blur(10px); }
+    /* Timeline Slider */
+    .timeline { margin-top: 20px; }
     input[type=range] { width: 100%; cursor: pointer; accent-color: var(--accent); }
   </style>
 </head>
 <body>
 
-<div class="console">
-  <div class="terminal-header">
-    <div class="status-line">
-      <span>System: Active</span>
-      <span id="clock">11:36:02 UTC</span>
+<div class="sidebar">
+  <div class="header">
+    <h1 style="margin:0; font-size: 20px; font-weight: 900; color: var(--accent);">OMNI-ARCHIVE PRO</h1>
+    <div class="search-box">
+      <input type="text" id="globalSearch" placeholder="Search event (e.g. 'WWII', 'Jerusalem')..." />
+      <span style="position:absolute; right:15px; top:12px; opacity:0.5;">🔍</span>
     </div>
-    <input type="text" id="masterSearch" class="search-input" placeholder="> SEARCH COORDS / EVENTS / ENTITIES" />
-    <div style="font-size: 11px; color: var(--muted);">Temporal Sync: <span id="syncYear" style="color:var(--accent)">2026 CE</span></div>
+    <div class="timeline">
+      <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-bottom:5px;">
+        <span>3000 BCE</span>
+        <span id="yearDisplay" style="color:var(--accent); font-weight:bold;">2026 CE</span>
+        <span>FUTURE</span>
+      </div>
+      <input type="range" id="timeSlider" min="-3000" max="2050" value="2026" />
+    </div>
   </div>
   
-  <div class="feed-container" id="intel-feed">
-    <div style="color:var(--muted); font-size:12px; text-align:center; margin-top:40px;">// SYSTEM READY. SELECT TARGET.</div>
+  <div class="content" id="feed">
+    <div style="text-align:center; padding:40px; color:var(--muted);">
+      <h3>Awaiting Target...</h3>
+      <p style="font-size:13px;">Search an event above or click a coordinate on the globe to begin the sequence.</p>
+    </div>
   </div>
 </div>
 
-<div id="viewport">
-  <div id="globe-canvas"></div>
-  
-  <div class="hud-overlay">
-    <div class="hud-stat">LAT: <span id="hud-lat">0.00</span></div>
-    <div class="hud-stat">LNG: <span id="hud-lng">0.00</span></div>
-    <div class="hud-stat">DATA-NODES: 42,910</div>
-  </div>
-
-  <div class="timeline-footer">
-    <input type="range" id="masterSlider" min="-2000" max="2026" value="2026" />
-  </div>
+<div id="globe-wrapper">
+  <div id="globe-div"></div>
+  <div id="info-overlay">SYSTEM STATUS: OPTIMAL // SYNCING SATELLITES</div>
 </div>
 
 <script src="https://unpkg.com/three"></script>
 <script src="https://unpkg.com/globe.gl"></script>
 
 <script>
-  // Core Intelligence Seeds
-  const INTEL_SEEDS = [
-    { title: 'Destruction of Jerusalem', lat: 31.76, lng: 35.21, year: 70, summary: 'Strategic breach of Jerusalem walls by Roman legions.', source: 'Wikipedia_Archive' },
-    { title: 'Battle of Kiev', lat: 50.45, lng: 30.52, year: 2022, summary: 'Major engagement in the northern theater of operations.', source: 'GDELT_Live' },
-    { title: 'Fall of Berlin', lat: 52.52, lng: 13.40, year: 1945, summary: 'Final collapse of the Third Reich central command.', source: 'Military_History_Internal' }
+  // High-Value Seed Data
+  const ARCHIVE_SEEDS = [
+    { name: 'World War II', lat: 52.52, lng: 13.40, year: 1939, desc: 'Global conflict involving the vast majority of the world\'s countries.', link: 'https://en.wikipedia.org/wiki/World_War_II' },
+    { name: 'Siege of Jerusalem', lat: 31.76, lng: 35.21, year: 70, desc: 'The decisive event of the First Jewish–Roman War.', link: 'https://en.wikipedia.org/wiki/Siege_of_Jerusalem_(70_CE)' },
+    { name: 'Great Pyramid Completion', lat: 29.97, lng: 31.13, year: -2560, desc: 'Completion of the oldest of the Seven Wonders of the Ancient World.', link: 'https://en.wikipedia.org/wiki/Great_Pyramid_of_Giza' },
+    { name: 'Battle of Gettysburg', lat: 39.82, lng: -77.23, year: 1863, desc: 'Turning point of the American Civil War.', link: 'https://en.wikipedia.org/wiki/Battle_of_Gettysburg' }
   ];
 
-  const state = { year: 2026, world: null, activeTarget: null };
-  const feed = document.getElementById('intel-feed');
-  const slider = document.getElementById('masterSlider');
+  const state = { year: 2026, world: null };
+  const feed = document.getElementById('feed');
+  const slider = document.getElementById('timeSlider');
+  const yearDisp = document.getElementById('yearDisplay');
 
-  // Globe Initialization
-  state.world = Globe()(document.getElementById('globe-canvas'))
-    .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-    .backgroundColor('#0a0a0b')
-    .ringColor(() => '#3b82f6')
-    .ringMaxRadius(4)
-    .ringPropagationSpeed(2)
+  // Initialize Globe
+  state.world = Globe()(document.getElementById('globe-div'))
+    .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+    .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+    .backgroundColor('#030712')
+    .pointsData(ARCHIVE_SEEDS)
+    .pointLabel('name')
+    .pointColor(() => '#60a5fa')
+    .pointRadius(0.6)
     .onGlobeClick(({ lat, lng }) => {
-      document.getElementById('hud-lat').textContent = lat.toFixed(4);
-      document.getElementById('hud-lng').textContent = lng.toFixed(4);
-      triggerInternalAudit(lat, lng);
+      state.world.pointOfView({ lat, lng, altitude: 1.5 }, 1000);
+      fetchCompleteProfile(lat, lng);
     });
 
-  // Time Sync
-  slider.oninput = (e) => {
-    state.year = parseInt(e.target.value);
-    document.getElementById('syncYear').textContent = state.year < 0 ? Math.abs(state.year) + " BCE" : state.year + " CE";
-    
-    // Auto-update heatmap based on year
-    const activeRings = INTEL_SEEDS.filter(s => s.year === state.year || (s.year < state.year && s.year > state.year - 5));
-    state.world.ringsData(activeRings);
-    
-    // Adjust Globe Texture
-    state.world.globeImageUrl(state.year < 1850 ? '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg' : '//unpkg.com/three-globe/example/img/earth-night.jpg');
-  };
+  // Global Search Logic
+  document.getElementById('globalSearch').addEventListener('keypress', async (e) => {
+    if (e.key === 'Enter') {
+      const query = e.target.value.toLowerCase();
+      const match = ARCHIVE_SEEDS.find(s => s.name.toLowerCase().includes(query));
+      
+      if (match) {
+        // If it's a known historical seed
+        updateTimeline(match.year);
+        state.world.pointOfView({ lat: match.lat, lng: match.lng, altitude: 1.2 }, 2000);
+        fetchCompleteProfile(match.lat, match.lng, match.name);
+      } else {
+        // Search Wikipedia/Geocode for unknown locations
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`).then(r => r.json());
+        if (res[0]) {
+          state.world.pointOfView({ lat: parseFloat(res[0].lat), lng: parseFloat(res[0].lon), altitude: 1.5 }, 2000);
+          fetchCompleteProfile(res[0].lat, res[0].lon);
+        }
+      }
+    }
+  });
 
-  async function triggerInternalAudit(lat, lng) {
-    feed.innerHTML = '<div style="color:var(--accent); font-size:11px;">[ SYSTEM AUDIT IN PROGRESS ]</div>';
+  function updateTimeline(y) {
+    state.year = parseInt(y);
+    slider.value = state.year;
+    yearDisp.textContent = state.year < 0 ? Math.abs(state.year) + " BCE" : state.year + " CE";
+    
+    // Texture Swap logic based on year
+    const tex = state.year < 1880 ? '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg' : '//unpkg.com/three-globe/example/img/earth-night.jpg';
+    state.world.globeImageUrl(tex);
+  }
+
+  async function fetchCompleteProfile(lat, lng, label = null) {
+    feed.innerHTML = '<div style="color:var(--accent); padding:20px;">Synchronizing with Archive...</div>';
     
     try {
-      // 1. Identify Location
-      const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`).then(r => r.json());
-      const name = geo.address.city || geo.address.country || "Target Zone";
-      
-      feed.innerHTML = `<div style="padding-bottom:15px; border-bottom:1px solid var(--border); margin-bottom:15px;">
-        <h2 style="margin:0; color:#fff;">${name.toUpperCase()}</h2>
-        <span style="font-size:10px; color:var(--intel);">STATUS: SCANNED // YEAR: ${state.year}</span>
-      </div>`;
+      let name = label;
+      if (!name) {
+        const g = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`).then(r => r.json());
+        name = g.address.city || g.address.country || "Oceanic Region";
+      }
 
-      // 2. Multi-Source Retrieval
+      feed.innerHTML = `<h2 style="margin:0;">${name}</h2><p style="font-size:12px; color:var(--muted)">Coord: ${parseFloat(lat).toFixed(3)}, ${parseFloat(lng).toFixed(3)}</p><br/>`;
+
+      // Parallel Fetch: History & Modern News
       const [wiki, news] = await Promise.all([
-        fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=5&format=json&origin=*`).then(r => r.json()),
-        fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(name)}&mode=artlist&format=json&maxrecords=5`).then(r => r.json())
+        fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=3&format=json&origin=*`).then(r => r.json()),
+        fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(name)}&mode=artlist&format=json&maxrecords=3`).then(r => r.json())
       ]);
 
-      // Render Wiki History
+      // Render Results
       if (wiki.query?.geosearch) {
         for (let item of wiki.query.geosearch) {
           const detail = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`).then(r => r.json());
-          renderIntel("HISTORICAL_ARCHIVE", detail.title, detail.extract, detail.content_urls.desktop.page);
+          addCard("tag-wiki", "Archive Record", detail.title, detail.extract, detail.content_urls.desktop.page);
         }
       }
 
-      // Render Live Dispatches
-      if (news.articles && state.year >= 2015) {
+      if (news.articles) {
         news.articles.forEach(a => {
-          renderIntel("LIVE_DISPATCH", a.title, `Electronic record captured at ${name}.`, a.url);
+          addCard("tag-news", "Global Dispatch", a.title, "Live news coverage recorded at this location.", a.url);
         });
       }
 
-    } catch(e) { feed.innerHTML = "ERR: UPLINK FAILED."; }
+    } catch(e) { feed.innerHTML = "Access Denied // Database Offline."; }
   }
 
-  function renderIntel(type, title, body, link) {
-    const card = document.createElement('div');
-    card.className = 'intel-card';
-    card.innerHTML = `
-      <div class="intel-type">${type}</div>
-      <div class="intel-title">${title}</div>
-      <div class="intel-body">${body}</div>
-      <a href="${link}" target="_blank" class="action-btn">ACCESS DATA</a>
-    `;
-    feed.appendChild(card);
+  function addCard(cls, type, title, body, link) {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `<span class="tag ${cls}">${type}</span><h3>${title}</h3><p style="font-size:13px; color:var(--muted);">${body}</p><a href="${link}" target="_blank" class="btn">View Full Intelligence</a>`;
+    feed.appendChild(d);
   }
 
-  // Master Search
-  document.getElementById('masterSearch').onkeypress = async (e) => {
-    if (e.key === 'Enter') {
-      const q = e.target.value;
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`).then(r => r.json());
-      if (res[0]) {
-        state.world.pointOfView({ lat: parseFloat(res[0].lat), lng: parseFloat(res[0].lon), altitude: 1.5 }, 2000);
-        triggerInternalAudit(res[0].lat, res[0].lon);
-      }
-    }
-  };
+  slider.oninput = (e) => updateTimeline(e.target.value);
+  window.addEventListener('resize', () => state.world.width(window.innerWidth - 420).height(window.innerHeight));
 
-  // UI Housekeeping
-  setInterval(() => {
-    document.getElementById('clock').textContent = new Date().toISOString().split('T')[1].split('.')[0] + " UTC";
-  }, 1000);
-
-  window.addEventListener('resize', () => {
-    state.world.width(window.innerWidth - 450).height(window.innerHeight);
-  });
 </script>
 </body>
 </html>
