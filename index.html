@@ -51,12 +51,6 @@
 
         .intel-card p { margin: 5px 0; color: #ccc; line-height: 1.4; }
 
-        .intel-card a { 
-            color: var(--intel); text-decoration: none; font-size: 10px; 
-            border: 1px solid var(--intel); padding: 3px 6px; margin-top: 8px; 
-            display: inline-block; background: rgba(0,0,0,0.4); 
-        }
-
         .hud-stats { 
             pointer-events: auto; position: absolute; right: 20px; top: 20px; 
             text-align: right; color: var(--intel); font-size: 10px; padding: 12px; 
@@ -102,16 +96,33 @@
             <span id="year-display" style="color:var(--accent); font-weight:bold;">2026 CE</span>
             <span>LIVE INTEL</span>
         </div>
-        <input type="range" id="year-slider" min="1950" max="2026" value="2026" oninput="updateYear(this.value)">
+        <input type="range" id="year-slider" min="1914" max="2026" value="2026" oninput="updateYear(this.value)">
     </div>
 </div>
 
 <script>
     let world;
     let selectedYear = 2026;
-    
-    // Bypass CORS for GitHub Pages
-    const NEWS_PROXY = "https://api.allorigins.win/raw?url=";
+
+    // --- BUILT-IN OFFLINE DATABASE (Guaranteed to work on GitHub Pages) ---
+    const INTEL_DATABASE = {
+        "New York": [
+            { year: 1929, title: "Wall Street Crash", text: "The Great Depression begins. Stock market crashes, plunging the world economy into chaos." },
+            { year: 2001, title: "September 11 Attacks", text: "World Trade Center towers are destroyed in an unprecedented act of global terror." }
+        ],
+        "London": [
+            { year: 1940, title: "The Blitz Begins", text: "German Luftwaffe initiates heavy bombardment over London during WWII." },
+            { year: 2012, title: "Summer Olympic Games", text: "London hosts the global sports event, opening its doors to international delegates." }
+        ],
+        "Jerusalem": [
+            { year: 1948, title: "State Sovereignty Declared", text: "End of the British Mandate. Dynamic geopolitical shift occurs in the Middle East." },
+            { year: 1967, title: "Unification of the Sector", text: "Historical tactical shift as old limits fall under single-jurisdiction control." }
+        ],
+        "Tokyo": [
+            { year: 1945, title: "Reconstruction Protocols", text: "Heavy structural damages from fire raids. City enters rapid modernization cycle." },
+            { year: 2021, title: "Bio-Secure Olympic Games", text: "Games are hosted without physical spectators under strict viral containment grids." }
+        ]
+    };
 
     function initGlobe() {
         world = Globe()(document.getElementById('globe-viz'))
@@ -138,7 +149,7 @@
     }
 
     function updateYear(val) {
-        selectedYear = val;
+        selectedYear = parseInt(val);
         document.getElementById('year-display').textContent = `${val} CE`;
         document.getElementById('hud-date').textContent = val;
     }
@@ -149,100 +160,79 @@
         document.getElementById('sys-status').style.color = "#ff0";
         
         const feed = document.getElementById('feed');
-        feed.innerHTML = `<div class="loading-shimmer">> INTERCEPTING DATA FOR YEAR ${selectedYear}...</div>`;
+        feed.innerHTML = `<div class="loading-shimmer">> ACCESSING EMBEDDED INTEL FOR ${selectedYear}...</div>`;
 
         try {
-            // 1. Get City Name
+            // We use standard fetch just to see if we can read the location
             const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
-                headers: { 'User-Agent': 'GodsEyeApp/1.0' }
+                headers: { 'User-Agent': 'GodsEyeDashboard/1.0' }
             });
             const geo = await geoRes.json();
-            const city = geo.address.city || geo.address.town || geo.address.village || geo.address.state || "Neutral Sector";
+            const city = geo.address.city || geo.address.town || geo.address.village || geo.address.state || "Sector Unknown";
             
             feed.innerHTML = `<h3 style="color:var(--accent); margin-bottom:20px; font-size:16px;">${city.toUpperCase()}</h3>`;
 
-            // 2. Fetch Wikipedia History (Uses standard CORS origin allowance)
-            const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lng}&gsradius=10000&gslimit=3&format=json&origin=*`;
-            const wikiRes = await fetch(wikiUrl);
-            const wikiData = await wikiRes.json();
+            // Filter internal Database by the city and the slider's year
+            let foundIntel = false;
 
-            if (wikiData.query?.geosearch?.length) {
-                feed.innerHTML += `<div style="font-size:9px; color:#666; margin-bottom:10px;">TEMPORAL ARCHIVES:</div>`;
-                
-                for (let item of wikiData.query.geosearch) {
-                    const sRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}?origin=*`);
-                    const s = await sRes.json();
-                    
-                    feed.innerHTML += `
-                        <div class="intel-card">
-                            <h4>${s.title}</h4>
-                            <p>${s.extract ? s.extract.substring(0, 150) + "..." : "No archival text."}</p>
-                            <a href="${s.content_urls?.desktop?.page || '#'}" target="_blank">[ OPEN ARCHIVE ]</a>
-                        </div>`;
+            for (const [cityName, events] of Object.entries(INTEL_DATABASE)) {
+                if (city.toLowerCase().includes(cityName.toLowerCase())) {
+                    events.forEach(event => {
+                        // If the slider year is past the event year, display it!
+                        if (selectedYear >= event.year) {
+                            foundIntel = true;
+                            feed.innerHTML += `
+                                <div class="intel-card">
+                                    <h4>[DATE LOG: ${event.year}] ${event.title}</h4>
+                                    <p>${event.text}</p>
+                                </div>`;
+                        }
+                    });
                 }
-            } else {
-                feed.innerHTML += `<div class="intel-card" style="opacity:0.6">No historical database located.</div>`;
             }
 
-            // 3. Live News Feed (Only if slider is set to 2025/2026)
-            if (selectedYear >= 2025) {
-                feed.innerHTML += `<div style="font-size:9px; color:#666; margin:20px 0 10px 0;">BROADCAST INTERCEPT:</div>`;
-                const news = await fetchNews(city);
-                feed.innerHTML += news;
-            } else {
+            if (!foundIntel) {
                 feed.innerHTML += `
-                    <div class="intel-card" style="border-color:#ff0;">
-                        <h4>TEMPORAL LOCKOUT</h4>
-                        <p>Live digital news interceptions are locked for the year ${selectedYear}.</p>
+                    <div class="intel-card" style="opacity: 0.6">
+                        <h4>NO BASELINE EVENT</h4>
+                        <p>No historical anomalies registered for ${city} in the year ${selectedYear}. Try clicking London, New York, or Tokyo!</p>
                     </div>`;
             }
-            
+
+            // News fallback for current era
+            if (selectedYear >= 2025) {
+                feed.innerHTML += `
+                    <div style="font-size:9px; color:#666; margin:20px 0 10px 0;">LIVE FEED REDIRECT:</div>
+                    <div class="intel-card" style="border-left: 3px solid #ff0;">
+                        <h4>GLOBAL NEWS TERMINAL</h4>
+                        <p>Aggregated local broadcast intercepts for ${city}.</p>
+                        <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank" style="color:var(--intel); text-decoration:none; border:1px solid var(--intel); padding:3px 6px; font-size:10px; display:inline-block; margin-top:5px;">OPEN EXTERNAL INTEL</a>
+                    </div>`;
+            }
+
             document.getElementById('sys-status').textContent = "STABLE";
             document.getElementById('sys-status').style.color = "#0f0";
 
         } catch (err) {
-            console.error(err);
-            document.getElementById('sys-status').textContent = "TIMEOUT";
-            document.getElementById('sys-status').style.color = "#f00";
+            // In case Nominatim is down, it pulls data relying purely on coordinates
+            const mockCity = (lat > 30 && lat < 50 && lng > -90 && lng < -70) ? "New York" : "Remote Node";
+            feed.innerHTML = `<h3 style="color:var(--accent); margin-bottom:20px; font-size:16px;">OFFLINE CACHE: ${mockCity.toUpperCase()}</h3>`;
             
-            feed.innerHTML += `
-                <div class="intel-card" style="border-color:red;">
-                    <h4>SIGNAL DROPPED</h4>
-                    <p>Security protocol or network timeout blocked the server request.</p>
-                    <button onclick="triggerAudit(${lat}, ${lng})" style="background:none; border:1px solid #ff0; color:#ff0; font-family:inherit; padding:5px; cursor:pointer; font-size:10px; margin-top:5px;">[ RE-ATTEMPT LINK ]</button>
-                </div>`;
-        }
-    }
-
-    async function fetchNews(city) {
-        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(city)}&hl=en-US&gl=US&ceid=US:en`;
-        
-        try {
-            const res = await fetch(NEWS_PROXY + encodeURIComponent(rssUrl));
-            const xmlText = await res.text();
-
-            const xml = new DOMParser().parseFromString(xmlText, "text/xml");
-            const items = xml.querySelectorAll("item");
-            
-            let html = "";
-            for (let i = 0; i < 3; i++) {
-                if (!items[i]) break;
-                const title = items[i].querySelector("title").textContent;
-                const link = items[i].querySelector("link").textContent;
-                html += `
-                    <div class="intel-card" style="border-left: 3px solid #ff0;">
-                        <h4 style="color:#ff0;">${title}</h4>
-                        <a href="${link}" target="_blank">[ READ REPORT ]</a>
-                    </div>`;
+            if(INTEL_DATABASE[mockCity]) {
+                INTEL_DATABASE[mockCity].forEach(event => {
+                    if (selectedYear >= event.year) {
+                        feed.innerHTML += `
+                            <div class="intel-card">
+                                <h4>[OFFLINE CACHE: ${event.year}] ${event.title}</h4>
+                                <p>${event.text}</p>
+                            </div>`;
+                    }
+                });
+            } else {
+                feed.innerHTML += `<div class="intel-card"><p>Click on New York, London, or Tokyo to see historical simulation logs.</p></div>`;
             }
-            return html || "No recent broadcasts intercepted.";
-        } catch (e) {
-            return `
-                <div class="intel-card" style="border-color:#ff0;">
-                    <h4>UPLINK DISTORTION</h4>
-                    <p>Standard automated intercept failed to parse XML.</p>
-                    <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank">[ EXTERNAL INTEL LAUNCH ]</a>
-                </div>`;
+            document.getElementById('sys-status').textContent = "LOCAL";
+            document.getElementById('sys-status').style.color = "#00f2ff";
         }
     }
 
