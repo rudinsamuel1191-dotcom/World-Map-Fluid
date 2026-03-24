@@ -1,19 +1,15 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <title>WAR ROOM // GOD'S EYE</title>
+    <meta charset="utf-8">
+    <title>WAR ROOM // FLAT HORIZON</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.32.2/dist/globe.gl.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
         
         :root { 
-            --bg: #020205; 
-            --accent: #00f2ff; 
-            --panel: rgba(10, 10, 15, 0.9); 
-            --intel: #00ff41; 
-            --border: #1a1a2e; 
+            --bg: #020205; --accent: #00f2ff; --panel: rgba(10, 10, 15, 0.9); --intel: #00ff41; --border: #1a1a2e; 
         }
 
         body, html { 
@@ -42,14 +38,18 @@
 
         .intel-card { 
             background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); 
-            padding: 12px; margin-bottom: 15px; font-size: 11px; transition: 0.3s; 
+            padding: 12px; margin-bottom: 15px; font-size: 11px; 
         }
-
-        .intel-card:hover { background: rgba(0, 242, 255, 0.1); }
 
         .intel-card h4 { margin: 0 0 5px 0; color: var(--accent); text-transform: uppercase; font-size: 12px; }
 
         .intel-card p { margin: 5px 0; color: #ccc; line-height: 1.4; }
+
+        .intel-card a { 
+            color: var(--intel); text-decoration: none; font-size: 10px; 
+            border: 1px solid var(--intel); padding: 3px 6px; margin-top: 8px; 
+            display: inline-block; background: rgba(0,0,0,0.4); 
+        }
 
         .hud-stats { 
             pointer-events: auto; position: absolute; right: 20px; top: 20px; 
@@ -63,10 +63,19 @@
             border: 1px solid var(--border); 
         }
 
-        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+        .mode-toggles {
+            position: absolute; top: 120px; right: 20px; pointer-events: auto;
+            display: flex; flex-direction: column; gap: 10px;
+        }
 
-        .loading-shimmer { color: var(--accent); font-style: italic; animation: blink 1s infinite; }
-        @keyframes blink { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+        .t-btn {
+            background: #000; color: #fff; border: 1px solid var(--accent);
+            font-family: inherit; font-size: 11px; padding: 10px; cursor: pointer;
+            transition: 0.3s; width: 140px;
+        }
+        .t-btn.active { background: var(--accent); color: #000; }
+
+        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
     </style>
 </head>
 <body>
@@ -77,166 +86,173 @@
     <div class="sidebar">
         <div class="header">
             <div style="font-size: 9px; color: var(--intel); margin-bottom: 5px;">[ SATELLITE LINK: ACTIVE ]</div>
-            <h2 style="margin: 0; font-size: 18px; letter-spacing: 2px;">GOD'S EYE</h2>
+            <h2 style="margin: 0; font-size: 18px; letter-spacing: 2px;">GOD'S EYE FLAT</h2>
         </div>
         <div class="feed" id="feed">
-            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> SELECT TEMPORAL COORDINATES<br>> CLICK GLOBE TO SCAN TARGET</div>
+            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> CLICK THE FLAT MAP TO INTERCEPT DATA</div>
         </div>
     </div>
 
     <div class="hud-stats">
-        DATE: <span id="hud-date">2026.03.23</span><br>
-        COORDS: <span id="hud-coords">GLOBAL</span><br>
-        STATUS: <span id="sys-status" style="color:#0f0">READY</span>
+        DATE: <span id="hud-date">2026 CE</span><br>
+        SECTOR: <span id="hud-coords">GLOBAL</span><br>
+        MAP: <span style="color:#0f0">FLAT VIEW</span>
+    </div>
+
+    <div class="mode-toggles">
+        <button id="btn-news" class="t-btn active" onclick="setMode('news')">GLOBAL NEWS</button>
+        <button id="btn-mig" class="t-btn" onclick="setMode('migration')">JEWISH MIGRATION</button>
     </div>
 
     <div class="timeline-ctrl">
         <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 10px;">
-            <span>HISTORICAL ARCHIVE</span>
+            <span id="label-left">-500 BCE</span>
             <span id="year-display" style="color:var(--accent); font-weight:bold;">2026 CE</span>
-            <span>LIVE INTEL</span>
+            <span>PRESENT ERA</span>
         </div>
-        <input type="range" id="year-slider" min="1914" max="2026" value="2026" oninput="updateYear(this.value)">
+        <input type="range" id="year-slider" min="-500" max="2026" value="2026" oninput="updateYear(this.value)">
     </div>
 </div>
 
 <script>
     let world;
     let selectedYear = 2026;
+    let currentMode = 'news'; // 'news' or 'migration'
 
-    // --- BUILT-IN OFFLINE DATABASE (Guaranteed to work on GitHub Pages) ---
-    const INTEL_DATABASE = {
-        "New York": [
-            { year: 1929, title: "Wall Street Crash", text: "The Great Depression begins. Stock market crashes, plunging the world economy into chaos." },
-            { year: 2001, title: "September 11 Attacks", text: "World Trade Center towers are destroyed in an unprecedented act of global terror." }
-        ],
-        "London": [
-            { year: 1940, title: "The Blitz Begins", text: "German Luftwaffe initiates heavy bombardment over London during WWII." },
-            { year: 2012, title: "Summer Olympic Games", text: "London hosts the global sports event, opening its doors to international delegates." }
-        ],
-        "Jerusalem": [
-            { year: 1948, title: "State Sovereignty Declared", text: "End of the British Mandate. Dynamic geopolitical shift occurs in the Middle East." },
-            { year: 1967, title: "Unification of the Sector", text: "Historical tactical shift as old limits fall under single-jurisdiction control." }
-        ],
-        "Tokyo": [
-            { year: 1945, title: "Reconstruction Protocols", text: "Heavy structural damages from fire raids. City enters rapid modernization cycle." },
-            { year: 2021, title: "Bio-Secure Olympic Games", text: "Games are hosted without physical spectators under strict viral containment grids." }
-        ]
-    };
+    // Static Jewish Migration Nodes over 2500 years
+    const migrationArcs = [
+        { from: 'Israel', to: 'Babylon', year: -586, lat1: 31.76, lng1: 35.21, lat2: 32.53, lng2: 44.42, text: "Babylonian Exile" },
+        { from: 'Israel', to: 'Rome', year: 70, lat1: 31.76, lng1: 35.21, lat2: 41.90, lng2: 12.49, text: "Roman Exile (Siege of Jerusalem)" },
+        { from: 'Israel', to: 'Spain', year: 1000, lat1: 31.76, lng1: 35.21, lat2: 40.41, lng2: -3.70, text: "Sephardic Golden Age" },
+        { from: 'Israel', to: 'Poland', year: 1500, lat1: 31.76, lng1: 35.21, lat2: 52.22, lng2: 21.01, text: "Ashkenazi Expansion" },
+        { from: 'Spain', to: 'Ottoman Empire', year: 1492, lat1: 40.41, lng1: -3.70, lat2: 41.00, lng2: 28.97, text: "Alhambra Decree Expulsion" },
+        { from: 'Russia', to: 'USA', year: 1881, lat1: 55.75, lng1: 37.61, lat2: 40.71, lng2: -74.00, text: "Pale of Settlement Pogrom Migration" },
+        { from: 'Germany', to: 'Israel', year: 1933, lat1: 52.52, lng1: 13.40, lat2: 31.76, lng2: 35.21, text: "Haavara Agreement (Aliyah)" },
+        { from: 'Morocco', to: 'Israel', year: 1950, lat1: 33.57, lng1: -7.58, lat2: 31.76, lng2: 35.21, text: "Mizrahi Exodus" }
+    ];
 
-    function initGlobe() {
+    function initMap() {
         world = Globe()(document.getElementById('globe-viz'))
             .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg')
-            .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
             .backgroundColor('#020205')
-            .showAtmosphere(true)
-            .atmosphereColor('#00f2ff')
-            .atmosphereAltitude(0.2)
+            .showAtmosphere(false) // Disable atmosphere for flat mode
             .onGlobeClick(({ lat, lng }) => {
-                world.pointOfView({ lat, lng, altitude: 1.5 }, 1000);
-                triggerAudit(lat, lng);
-                ping(lat, lng);
+                if (currentMode === 'news') {
+                    auditLocation(lat, lng);
+                }
             });
 
-        world.controls().autoRotate = true;
-        world.controls().autoRotateSpeed = 0.2;
+        // Toggle Flat Mode (Projected as a plane)
+        world.presetCoords({ lat: 0, lng: 0, altitude: 2 });
+        world.controls().enableRotate = false; // Locks rotation so it stays a flat sheet
+        
+        // Load Country Names and Borders (GeoJSON)
+        fetch('https://unpkg.com/world-atlas@2.0.2/countries-110m.json')
+            .then(res => res.json())
+            .then(data => {
+                // Feature extraction could be done here, but globe.gl simplifies it using .hexPolygons
+            });
+
+        renderMapOverlay();
     }
 
-    function ping(lat, lng) {
-        const pulse = { lat, lng, maxR: 5, color: '#00f2ff', propagationSpeed: 2, repeatAfter: 500 };
-        world.ringsData([pulse]);
-        setTimeout(() => world.ringsData([]), 3000);
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('btn-news').className = (mode === 'news') ? 't-btn active' : 't-btn';
+        document.getElementById('btn-mig').className = (mode === 'migration') ? 't-btn active' : 't-btn';
+        renderMapOverlay();
     }
 
     function updateYear(val) {
         selectedYear = parseInt(val);
-        document.getElementById('year-display').textContent = `${val} CE`;
-        document.getElementById('hud-date').textContent = val;
+        document.getElementById('year-display').textContent = selectedYear < 0 ? `${Math.abs(selectedYear)} BCE` : `${selectedYear} CE`;
+        document.getElementById('hud-date').textContent = selectedYear < 0 ? `${Math.abs(selectedYear)} BCE` : `${selectedYear} CE`;
+        renderMapOverlay();
     }
 
-    async function triggerAudit(lat, lng) {
-        document.getElementById('hud-coords').textContent = `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
-        document.getElementById('sys-status').textContent = "SCANNING";
-        document.getElementById('sys-status').style.color = "#ff0";
-        
-        const feed = document.getElementById('feed');
-        feed.innerHTML = `<div class="loading-shimmer">> ACCESSING EMBEDDED INTEL FOR ${selectedYear}...</div>`;
+    function renderMapOverlay() {
+        if (currentMode === 'migration') {
+            // Filter migration routes that happened before or equal to the selected year
+            const activeArcs = migrationArcs.filter(arc => arc.year <= selectedYear);
 
-        try {
-            // We use standard fetch just to see if we can read the location
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
-                headers: { 'User-Agent': 'GodsEyeDashboard/1.0' }
-            });
-            const geo = await geoRes.json();
-            const city = geo.address.city || geo.address.town || geo.address.village || geo.address.state || "Sector Unknown";
-            
-            feed.innerHTML = `<h3 style="color:var(--accent); margin-bottom:20px; font-size:16px;">${city.toUpperCase()}</h3>`;
+            world.arcsData(activeArcs)
+                .arcStartLat(d => d.lat1)
+                .arcStartLng(d => d.lng1)
+                .arcEndLat(d => d.lat2)
+                .arcEndLng(d => d.lng2)
+                .arcColor(() => '#00ff41')
+                .arcDashLength(0.4)
+                .arcDashGap(0.2)
+                .arcDashAnimateTime(2000)
+                .arcsTransitionDuration(0);
 
-            // Filter internal Database by the city and the slider's year
-            let foundIntel = false;
-
-            for (const [cityName, events] of Object.entries(INTEL_DATABASE)) {
-                if (city.toLowerCase().includes(cityName.toLowerCase())) {
-                    events.forEach(event => {
-                        // If the slider year is past the event year, display it!
-                        if (selectedYear >= event.year) {
-                            foundIntel = true;
-                            feed.innerHTML += `
-                                <div class="intel-card">
-                                    <h4>[DATE LOG: ${event.year}] ${event.title}</h4>
-                                    <p>${event.text}</p>
-                                </div>`;
-                        }
-                    });
-                }
-            }
-
-            if (!foundIntel) {
-                feed.innerHTML += `
-                    <div class="intel-card" style="opacity: 0.6">
-                        <h4>NO BASELINE EVENT</h4>
-                        <p>No historical anomalies registered for ${city} in the year ${selectedYear}. Try clicking London, New York, or Tokyo!</p>
-                    </div>`;
-            }
-
-            // News fallback for current era
-            if (selectedYear >= 2025) {
-                feed.innerHTML += `
-                    <div style="font-size:9px; color:#666; margin:20px 0 10px 0;">LIVE FEED REDIRECT:</div>
-                    <div class="intel-card" style="border-left: 3px solid #ff0;">
-                        <h4>GLOBAL NEWS TERMINAL</h4>
-                        <p>Aggregated local broadcast intercepts for ${city}.</p>
-                        <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank" style="color:var(--intel); text-decoration:none; border:1px solid var(--intel); padding:3px 6px; font-size:10px; display:inline-block; margin-top:5px;">OPEN EXTERNAL INTEL</a>
-                    </div>`;
-            }
-
-            document.getElementById('sys-status').textContent = "STABLE";
-            document.getElementById('sys-status').style.color = "#0f0";
-
-        } catch (err) {
-            // In case Nominatim is down, it pulls data relying purely on coordinates
-            const mockCity = (lat > 30 && lat < 50 && lng > -90 && lng < -70) ? "New York" : "Remote Node";
-            feed.innerHTML = `<h3 style="color:var(--accent); margin-bottom:20px; font-size:16px;">OFFLINE CACHE: ${mockCity.toUpperCase()}</h3>`;
-            
-            if(INTEL_DATABASE[mockCity]) {
-                INTEL_DATABASE[mockCity].forEach(event => {
-                    if (selectedYear >= event.year) {
-                        feed.innerHTML += `
-                            <div class="intel-card">
-                                <h4>[OFFLINE CACHE: ${event.year}] ${event.title}</h4>
-                                <p>${event.text}</p>
-                            </div>`;
-                    }
-                });
-            } else {
-                feed.innerHTML += `<div class="intel-card"><p>Click on New York, London, or Tokyo to see historical simulation logs.</p></div>`;
-            }
-            document.getElementById('sys-status').textContent = "LOCAL";
-            document.getElementById('sys-status').style.color = "#00f2ff";
+            showMigrationFeed(activeArcs);
+        } else {
+            world.arcsData([]); // Clear arcs if in standard news mode
         }
     }
 
-    initGlobe();
+    async function auditLocation(lat, lng) {
+        const feed = document.getElementById('feed');
+        feed.innerHTML = `<div>Scanning intercepts for coordinates [${lat.toFixed(2)}, ${lng.toFixed(2)}]...</div>`;
+
+        try {
+            // OpenStreetMap Reverse GeoCoding for City
+            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+            const geo = await geoRes.json();
+            const city = geo.address.city || geo.address.town || geo.address.state || "Uncharted Sector";
+            document.getElementById('hud-coords').textContent = city.toUpperCase();
+
+            // Direct hyperlinking to dynamic Historical/News sites
+            feed.innerHTML = `
+                <h3 style="color:var(--accent);">${city.toUpperCase()}</h3>
+                
+                <div class="intel-card" style="border-left: 3px solid #ff0;">
+                    <h4>[LIVE] GOOGLE NEWS TERMINAL</h4>
+                    <p>Open targeted Google News broadcasts for this area.</p>
+                    <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank">LAUNCH LIVE AGGREGATOR</a>
+                </div>
+
+                <div class="intel-card" style="border-left: 3px solid #00ff41;">
+                    <h4>[HISTORICAL] WIKIPEDIA ARCHIVE</h4>
+                    <p>Open historical entries for this specific point on the map.</p>
+                    <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(city)}" target="_blank">LAUNCH ARCHIVES</a>
+                </div>
+
+                <div class="intel-card" style="border-left: 3px solid #ff0044;">
+                    <h4>[TEMPORAL] TIMELINE PORTAL</h4>
+                    <p>View historical changes of the year ${selectedYear} for this area.</p>
+                    <a href="https://www.google.com/search?q=${encodeURIComponent(city)}+history+year+${selectedYear}" target="_blank">LAUNCH TEMPORAL SEARCH</a>
+                </div>
+            `;
+
+        } catch (e) {
+            feed.innerHTML = `<div class="intel-card" style="color:red;">CONNECTION DROPPED. Establish manual link to local satellites.</div>`;
+        }
+    }
+
+    function showMigrationFeed(arcs) {
+        const feed = document.getElementById('feed');
+        feed.innerHTML = `<h3 style="color:var(--accent);">MIGRATION LOGS (Up to ${selectedYear})</h3>`;
+        
+        if (arcs.length === 0) {
+            feed.innerHTML += `<div class="intel-card"><p>No major recorded migrations before this era.</p></div>`;
+            return;
+        }
+
+        arcs.forEach(arc => {
+            const era = arc.year < 0 ? `${Math.abs(arc.year)} BCE` : `${arc.year} CE`;
+            feed.innerHTML += `
+                <div class="intel-card">
+                    <h4>${era}: ${arc.from} -> ${arc.to}</h4>
+                    <p>${arc.text}</p>
+                    <a href="https://www.google.com/search?q=Jewish+migration+${encodeURIComponent(arc.from)}+${encodeURIComponent(arc.to)}" target="_blank">DECRYPT HISTORY</a>
+                </div>
+            `;
+        });
+    }
+
+    initMap();
 </script>
 </body>
 </html>
