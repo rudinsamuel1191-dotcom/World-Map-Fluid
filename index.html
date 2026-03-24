@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>WAR ROOM // FLAT HORIZON</title>
+    <title>WAR ROOM // FLAT OVERLAYS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.32.2/dist/globe.gl.min.js"></script>
     <style>
@@ -85,18 +85,18 @@
 <div class="ui-layer">
     <div class="sidebar">
         <div class="header">
-            <div style="font-size: 9px; color: var(--intel); margin-bottom: 5px;">[ SATELLITE LINK: ACTIVE ]</div>
+            <div style="font-size: 9px; color: var(--intel); margin-bottom: 5px;">[ SAT-UPLINK: ACTIVE ]</div>
             <h2 style="margin: 0; font-size: 18px; letter-spacing: 2px;">GOD'S EYE FLAT</h2>
         </div>
         <div class="feed" id="feed">
-            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> CLICK THE FLAT MAP TO INTERCEPT DATA</div>
+            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> CLICK FLAT MAP TO INTERCEPT DATA</div>
         </div>
     </div>
 
     <div class="hud-stats">
         DATE: <span id="hud-date">2026 CE</span><br>
         SECTOR: <span id="hud-coords">GLOBAL</span><br>
-        MAP: <span style="color:#0f0">FLAT VIEW</span>
+        MAP: <span style="color:#0f0">FLAT VIEW / LABELED</span>
     </div>
 
     <div class="mode-toggles">
@@ -117,9 +117,8 @@
 <script>
     let world;
     let selectedYear = 2026;
-    let currentMode = 'news'; // 'news' or 'migration'
+    let currentMode = 'news';
 
-    // Static Jewish Migration Nodes over 2500 years
     const migrationArcs = [
         { from: 'Israel', to: 'Babylon', year: -586, lat1: 31.76, lng1: 35.21, lat2: 32.53, lng2: 44.42, text: "Babylonian Exile" },
         { from: 'Israel', to: 'Rome', year: 70, lat1: 31.76, lng1: 35.21, lat2: 41.90, lng2: 12.49, text: "Roman Exile (Siege of Jerusalem)" },
@@ -127,30 +126,58 @@
         { from: 'Israel', to: 'Poland', year: 1500, lat1: 31.76, lng1: 35.21, lat2: 52.22, lng2: 21.01, text: "Ashkenazi Expansion" },
         { from: 'Spain', to: 'Ottoman Empire', year: 1492, lat1: 40.41, lng1: -3.70, lat2: 41.00, lng2: 28.97, text: "Alhambra Decree Expulsion" },
         { from: 'Russia', to: 'USA', year: 1881, lat1: 55.75, lng1: 37.61, lat2: 40.71, lng2: -74.00, text: "Pale of Settlement Pogrom Migration" },
-        { from: 'Germany', to: 'Israel', year: 1933, lat1: 52.52, lng1: 13.40, lat2: 31.76, lng2: 35.21, text: "Haavara Agreement (Aliyah)" },
+        { from: 'Germany', to: 'Israel', year: 1933, lat1: 52.52, lng1: 13.40, lat2: 31.76, lng2: 35.21, text: "Haavara Agreement" },
         { from: 'Morocco', to: 'Israel', year: 1950, lat1: 33.57, lng1: -7.58, lat2: 31.76, lng2: 35.21, text: "Mizrahi Exodus" }
     ];
 
     function initMap() {
         world = Globe()(document.getElementById('globe-viz'))
-            .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg')
             .backgroundColor('#020205')
-            .showAtmosphere(false) // Disable atmosphere for flat mode
+            .showAtmosphere(false)
             .onGlobeClick(({ lat, lng }) => {
                 if (currentMode === 'news') {
                     auditLocation(lat, lng);
                 }
             });
 
-        // Toggle Flat Mode (Projected as a plane)
-        world.presetCoords({ lat: 0, lng: 0, altitude: 2 });
-        world.controls().enableRotate = false; // Locks rotation so it stays a flat sheet
-        
-        // Load Country Names and Borders (GeoJSON)
+        // 1. Force Flat Sheet Projection View
+        world.presetCoords({ lat: 0, lng: 0, altitude: 2.2 });
+        world.controls().enableRotate = false; // Disable tilting out of flat view
+
+        // 2. Add Country Outlines and Clickable Polygons
         fetch('https://unpkg.com/world-atlas@2.0.2/countries-110m.json')
             .then(res => res.json())
-            .then(data => {
-                // Feature extraction could be done here, but globe.gl simplifies it using .hexPolygons
+            .then(countriesData => {
+                // If using topojson, we decode it. For simple visual overlay we'll use polygons:
+                world.polygonsData([]); 
+            });
+
+        // Fallback drawing of country borders via Globe.gl's Native fetch
+        fetch('https://vasturiano.github.io/globe.gl/example/datasets/ne_110m_admin_0_countries.geojson')
+            .then(res => res.json())
+            .then(countries => {
+                world.polygonsData(countries.features)
+                    .polygonCapColor(() => 'rgba(0, 242, 255, 0.05)')
+                    .polygonSideColor(() => 'rgba(255, 255, 255, 0.05)')
+                    .polygonStrokeColor(() => 'rgba(0, 242, 255, 0.6)')
+                    .polygonLabel(({ properties: d }) => `<b>${d.ADMIN}</b>`)
+                    .onPolygonClick(({ properties: d }) => {
+                        if (currentMode === 'news') {
+                            auditLocationFromCountry(d.ADMIN);
+                        }
+                    });
+
+                // Set text labels inside the countries
+                world.labelsData(countries.features.map(feat => ({
+                    lat: feat.properties.LABEL_Y || feat.properties.LATITUDE || 0,
+                    lng: feat.properties.LABEL_X || feat.properties.LONGITUDE || 0,
+                    text: feat.properties.ADM0_A3 || feat.properties.ISO_A3 || feat.properties.ADMIN,
+                    size: 0.5,
+                    color: 'rgba(255, 255, 255, 0.7)'
+                })))
+                .labelText(d => d.text)
+                .labelSize(d => d.size)
+                .labelColor(d => d.color);
             });
 
         renderMapOverlay();
@@ -165,14 +192,14 @@
 
     function updateYear(val) {
         selectedYear = parseInt(val);
-        document.getElementById('year-display').textContent = selectedYear < 0 ? `${Math.abs(selectedYear)} BCE` : `${selectedYear} CE`;
-        document.getElementById('hud-date').textContent = selectedYear < 0 ? `${Math.abs(selectedYear)} BCE` : `${selectedYear} CE`;
+        const display = selectedYear < 0 ? `${Math.abs(selectedYear)} BCE` : `${selectedYear} CE`;
+        document.getElementById('year-display').textContent = display;
+        document.getElementById('hud-date').textContent = display;
         renderMapOverlay();
     }
 
     function renderMapOverlay() {
         if (currentMode === 'migration') {
-            // Filter migration routes that happened before or equal to the selected year
             const activeArcs = migrationArcs.filter(arc => arc.year <= selectedYear);
 
             world.arcsData(activeArcs)
@@ -183,52 +210,51 @@
                 .arcColor(() => '#00ff41')
                 .arcDashLength(0.4)
                 .arcDashGap(0.2)
-                .arcDashAnimateTime(2000)
-                .arcsTransitionDuration(0);
+                .arcDashAnimateTime(2000);
 
             showMigrationFeed(activeArcs);
         } else {
-            world.arcsData([]); // Clear arcs if in standard news mode
+            world.arcsData([]);
         }
     }
 
     async function auditLocation(lat, lng) {
-        const feed = document.getElementById('feed');
-        feed.innerHTML = `<div>Scanning intercepts for coordinates [${lat.toFixed(2)}, ${lng.toFixed(2)}]...</div>`;
-
+        // Fallback for custom coordinate clicking
         try {
-            // OpenStreetMap Reverse GeoCoding for City
             const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
             const geo = await geoRes.json();
-            const city = geo.address.city || geo.address.town || geo.address.state || "Uncharted Sector";
-            document.getElementById('hud-coords').textContent = city.toUpperCase();
-
-            // Direct hyperlinking to dynamic Historical/News sites
-            feed.innerHTML = `
-                <h3 style="color:var(--accent);">${city.toUpperCase()}</h3>
-                
-                <div class="intel-card" style="border-left: 3px solid #ff0;">
-                    <h4>[LIVE] GOOGLE NEWS TERMINAL</h4>
-                    <p>Open targeted Google News broadcasts for this area.</p>
-                    <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank">LAUNCH LIVE AGGREGATOR</a>
-                </div>
-
-                <div class="intel-card" style="border-left: 3px solid #00ff41;">
-                    <h4>[HISTORICAL] WIKIPEDIA ARCHIVE</h4>
-                    <p>Open historical entries for this specific point on the map.</p>
-                    <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(city)}" target="_blank">LAUNCH ARCHIVES</a>
-                </div>
-
-                <div class="intel-card" style="border-left: 3px solid #ff0044;">
-                    <h4>[TEMPORAL] TIMELINE PORTAL</h4>
-                    <p>View historical changes of the year ${selectedYear} for this area.</p>
-                    <a href="https://www.google.com/search?q=${encodeURIComponent(city)}+history+year+${selectedYear}" target="_blank">LAUNCH TEMPORAL SEARCH</a>
-                </div>
-            `;
-
-        } catch (e) {
-            feed.innerHTML = `<div class="intel-card" style="color:red;">CONNECTION DROPPED. Establish manual link to local satellites.</div>`;
+            const city = geo.address.city || geo.address.country || "Neutral Zone";
+            auditLocationFromCountry(city);
+        } catch(e) {
+            auditLocationFromCountry("Target Area");
         }
+    }
+
+    function auditLocationFromCountry(locationName) {
+        document.getElementById('hud-coords').textContent = locationName.toUpperCase();
+        const feed = document.getElementById('feed');
+
+        feed.innerHTML = `
+            <h3 style="color:var(--accent);">${locationName.toUpperCase()}</h3>
+            
+            <div class="intel-card" style="border-left: 3px solid #ff0;">
+                <h4>[LIVE] GOOGLE NEWS TERMINAL</h4>
+                <p>Track live search updates for ${locationName}.</p>
+                <a href="https://news.google.com/search?q=${encodeURIComponent(locationName)}" target="_blank">LAUNCH LIVE INTERCEPT</a>
+            </div>
+
+            <div class="intel-card" style="border-left: 3px solid #00ff41;">
+                <h4>[HISTORICAL] WIKIPEDIA ARCHIVE</h4>
+                <p>Analyze historical archives of this area.</p>
+                <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(locationName)}" target="_blank">LAUNCH ENCYCLOPEDIA</a>
+            </div>
+
+            <div class="intel-card" style="border-left: 3px solid #ff0044;">
+                <h4>[TEMPORAL] TIMELINE PORTAL</h4>
+                <p>Compare this location against year context ${selectedYear}.</p>
+                <a href="https://www.google.com/search?q=${encodeURIComponent(locationName)}+history+year+${selectedYear}" target="_blank">TEMPORAL SEARCH</a>
+            </div>
+        `;
     }
 
     function showMigrationFeed(arcs) {
