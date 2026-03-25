@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>WAR ROOM // FLAT OVERLAYS</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/globe.gl@2.32.2/dist/globe.gl.min.js"></script>
+    <title>WAR ROOM // FLAT HORIZON</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
         
@@ -18,7 +18,7 @@
             font-family: 'JetBrains Mono', monospace; overflow: hidden; 
         }
 
-        #globe-viz { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+        #map-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
 
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
 
@@ -76,11 +76,19 @@
         .t-btn.active { background: var(--accent); color: #000; }
 
         input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+        /* D3 Map Styles */
+        .country { fill: #0d1117; stroke: #1a1a2e; stroke-width: 1; cursor: pointer; transition: fill 0.2s; }
+        .country:hover { fill: rgba(0, 242, 255, 0.2); }
+        .country.active-country { fill: rgba(0, 242, 255, 0.3); stroke: var(--accent); }
+        .country-label { fill: #666; font-size: 8px; font-family: 'JetBrains Mono', sans-serif; pointer-events: none; }
+        .migration-arc { fill: none; stroke: var(--intel); stroke-width: 1.5; stroke-dasharray: 4, 4; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -8; } }
     </style>
 </head>
 <body>
 
-<div id="globe-viz"></div>
+<div id="map-container"></div>
 
 <div class="ui-layer">
     <div class="sidebar">
@@ -89,13 +97,13 @@
             <h2 style="margin: 0; font-size: 18px; letter-spacing: 2px;">GOD'S EYE FLAT</h2>
         </div>
         <div class="feed" id="feed">
-            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> CLICK FLAT MAP TO INTERCEPT DATA</div>
+            <div style="text-align: center; margin-top: 50%; opacity: 0.5;">> CLICK THE MAP OR TOGGLE MODES</div>
         </div>
     </div>
 
     <div class="hud-stats">
         DATE: <span id="hud-date">2026 CE</span><br>
-        SECTOR: <span id="hud-coords">GLOBAL</span><br>
+        LOCATION: <span id="hud-coords">GLOBAL</span><br>
         MAP: <span style="color:#0f0">FLAT VIEW / LABELED</span>
     </div>
 
@@ -115,170 +123,183 @@
 </div>
 
 <script>
-    let world;
     let selectedYear = 2026;
     let currentMode = 'news';
-
+    
+    // Static Jewish Migration Nodes spanning 2500 years
     const migrationArcs = [
-        { from: 'Israel', to: 'Babylon', year: -586, lat1: 31.76, lng1: 35.21, lat2: 32.53, lng2: 44.42, text: "Babylonian Exile" },
-        { from: 'Israel', to: 'Rome', year: 70, lat1: 31.76, lng1: 35.21, lat2: 41.90, lng2: 12.49, text: "Roman Exile (Siege of Jerusalem)" },
-        { from: 'Israel', to: 'Spain', year: 1000, lat1: 31.76, lng1: 35.21, lat2: 40.41, lng2: -3.70, text: "Sephardic Golden Age" },
-        { from: 'Israel', to: 'Poland', year: 1500, lat1: 31.76, lng1: 35.21, lat2: 52.22, lng2: 21.01, text: "Ashkenazi Expansion" },
-        { from: 'Spain', to: 'Ottoman Empire', year: 1492, lat1: 40.41, lng1: -3.70, lat2: 41.00, lng2: 28.97, text: "Alhambra Decree Expulsion" },
-        { from: 'Russia', to: 'USA', year: 1881, lat1: 55.75, lng1: 37.61, lat2: 40.71, lng2: -74.00, text: "Pale of Settlement Pogrom Migration" },
-        { from: 'Germany', to: 'Israel', year: 1933, lat1: 52.52, lng1: 13.40, lat2: 31.76, lng2: 35.21, text: "Haavara Agreement" },
-        { from: 'Morocco', to: 'Israel', year: 1950, lat1: 33.57, lng1: -7.58, lat2: 31.76, lng2: 35.21, text: "Mizrahi Exodus" }
+        { from: 'Israel', to: 'Babylon', year: -586, coords: [[35.2, 31.7], [44.4, 32.5]], text: "Babylonian Exile" },
+        { from: 'Israel', to: 'Rome', year: 70, coords: [[35.2, 31.7], [12.5, 41.9]], text: "Siege of Jerusalem (Roman Dispersion)" },
+        { from: 'Israel', to: 'Spain', year: 1000, coords: [[35.2, 31.7], [-3.7, 40.4]], text: "Rise of Sephardic Golden Age" },
+        { from: 'Israel', to: 'Poland', year: 1500, coords: [[35.2, 31.7], [21.0, 52.2]], text: "Ashkenazi Expansion into Eastern Europe" },
+        { from: 'Spain', to: 'Turkey', year: 1492, coords: [[-3.7, 40.4], [28.9, 41.0]], text: "Expulsion from Spain (Alhambra Decree)" },
+        { from: 'Russia', to: 'USA', year: 1881, coords: [[37.6, 55.7], [-74.0, 40.7]], text: "Pogroms Triggering Massive US Migration" },
+        { from: 'Germany', to: 'Israel', year: 1933, coords: [[13.4, 52.5], [35.2, 31.7]], text: "Haavara Agreement (Aliyah Bet)" },
+        { from: 'Morocco', to: 'Israel', year: 1948, coords: [[-7.6, 33.6], [35.2, 31.7]], text: "Mizrahi Exodus (Operation Mural)" }
     ];
 
-    function initMap() {
-        world = Globe()(document.getElementById('globe-viz'))
-            .backgroundColor('#020205')
-            .showAtmosphere(false)
-            .onGlobeClick(({ lat, lng }) => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    // Use D3 Mercator for a flat 2D sheet
+    const projection = d3.geoMercator()
+        .scale(width / 6.3)
+        .translate([width / 2.1, height / 1.7]);
+
+    const path = d3.geoPath().projection(projection);
+
+    const svg = d3.select("#map-container").append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .call(d3.zoom().scaleExtent([1, 8]).on("zoom", (event) => {
+            g.attr("transform", event.transform);
+        }));
+
+    const g = svg.append("g");
+
+    // Fetch topojson for the shapes
+    d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(topology => {
+        const countries = topojson.feature(topology, topology.objects.countries);
+
+        // Draw country borders
+        g.selectAll("path")
+            .data(countries.features)
+            .enter().append("path")
+            .attr("class", "country")
+            .attr("d", path)
+            .on("click", function(event, d) {
                 if (currentMode === 'news') {
-                    auditLocation(lat, lng);
+                    d3.selectAll(".country").classed("active-country", false);
+                    d3.select(this).classed("active-country", true);
+                    auditLocation(d);
                 }
             });
 
-        // 1. Force Flat Sheet Projection View
-        world.presetCoords({ lat: 0, lng: 0, altitude: 2.2 });
-        world.controls().enableRotate = false; // Disable tilting out of flat view
+        // Overlay Country Names
+        g.selectAll("text.country-label")
+            .data(countries.features)
+            .enter().append("text")
+            .attr("class", "country-label")
+            .attr("transform", d => {
+                const centroid = path.centroid(d);
+                return centroid ? `translate(${centroid[0]},${centroid[1]})` : null;
+            })
+            .attr("text-anchor", "middle")
+            .text(d => d.properties.name);
 
-        // 2. Add Country Outlines and Clickable Polygons
-        fetch('https://unpkg.com/world-atlas@2.0.2/countries-110m.json')
-            .then(res => res.json())
-            .then(countriesData => {
-                // If using topojson, we decode it. For simple visual overlay we'll use polygons:
-                world.polygonsData([]); 
-            });
-
-        // Fallback drawing of country borders via Globe.gl's Native fetch
-        fetch('https://vasturiano.github.io/globe.gl/example/datasets/ne_110m_admin_0_countries.geojson')
-            .then(res => res.json())
-            .then(countries => {
-                world.polygonsData(countries.features)
-                    .polygonCapColor(() => 'rgba(0, 242, 255, 0.05)')
-                    .polygonSideColor(() => 'rgba(255, 255, 255, 0.05)')
-                    .polygonStrokeColor(() => 'rgba(0, 242, 255, 0.6)')
-                    .polygonLabel(({ properties: d }) => `<b>${d.ADMIN}</b>`)
-                    .onPolygonClick(({ properties: d }) => {
-                        if (currentMode === 'news') {
-                            auditLocationFromCountry(d.ADMIN);
-                        }
-                    });
-
-                // Set text labels inside the countries
-                world.labelsData(countries.features.map(feat => ({
-                    lat: feat.properties.LABEL_Y || feat.properties.LATITUDE || 0,
-                    lng: feat.properties.LABEL_X || feat.properties.LONGITUDE || 0,
-                    text: feat.properties.ADM0_A3 || feat.properties.ISO_A3 || feat.properties.ADMIN,
-                    size: 0.5,
-                    color: 'rgba(255, 255, 255, 0.7)'
-                })))
-                .labelText(d => d.text)
-                .labelSize(d => d.size)
-                .labelColor(d => d.color);
-            });
-
-        renderMapOverlay();
-    }
+        renderMigrations();
+    });
 
     function setMode(mode) {
         currentMode = mode;
-        document.getElementById('btn-news').className = (mode === 'news') ? 't-btn active' : 't-btn';
-        document.getElementById('btn-mig').className = (mode === 'migration') ? 't-btn active' : 't-btn';
-        renderMapOverlay();
+        d3.selectAll(".t-btn").classed("active", false);
+        d3.select(`#btn-${mode}`).classed("active", true);
+
+        if (mode === 'news') {
+            g.selectAll(".migration-arc").remove();
+            d3.select("#feed").html(`<div style="text-align: center; margin-top: 50%; opacity: 0.5;">> CLICK ANY COUNTRY TO LAUNCH LIVE NEWS OR WIKIPEDIA</div>`);
+        } else {
+            d3.selectAll(".country").classed("active-country", false);
+            renderMigrations();
+        }
     }
 
     function updateYear(val) {
         selectedYear = parseInt(val);
         const display = selectedYear < 0 ? `${Math.abs(selectedYear)} BCE` : `${selectedYear} CE`;
-        document.getElementById('year-display').textContent = display;
-        document.getElementById('hud-date').textContent = display;
-        renderMapOverlay();
-    }
+        d3.select("#year-display").text(display);
+        d3.select("#hud-date").text(display);
 
-    function renderMapOverlay() {
         if (currentMode === 'migration') {
-            const activeArcs = migrationArcs.filter(arc => arc.year <= selectedYear);
-
-            world.arcsData(activeArcs)
-                .arcStartLat(d => d.lat1)
-                .arcStartLng(d => d.lng1)
-                .arcEndLat(d => d.lat2)
-                .arcEndLng(d => d.lng2)
-                .arcColor(() => '#00ff41')
-                .arcDashLength(0.4)
-                .arcDashGap(0.2)
-                .arcDashAnimateTime(2000);
-
-            showMigrationFeed(activeArcs);
-        } else {
-            world.arcsData([]);
+            renderMigrations();
         }
     }
 
-    async function auditLocation(lat, lng) {
-        // Fallback for custom coordinate clicking
-        try {
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-            const geo = await geoRes.json();
-            const city = geo.address.city || geo.address.country || "Neutral Zone";
-            auditLocationFromCountry(city);
-        } catch(e) {
-            auditLocationFromCountry("Target Area");
-        }
+    function renderMigrations() {
+        if (currentMode !== 'migration') return;
+
+        g.selectAll(".migration-arc").remove();
+
+        const activeArcs = migrationArcs.filter(arc => arc.year <= selectedYear);
+
+        g.selectAll(".migration-arc")
+            .data(activeArcs)
+            .enter().append("path")
+            .attr("class", "migration-arc")
+            .attr("d", d => {
+                const start = projection(d.coords[0]);
+                const end = projection(d.coords[1]);
+                if (!start || !end) return null;
+                
+                // Draw slight curves for the arcs
+                const dx = end[0] - start[0],
+                      dy = end[1] - start[1],
+                      dr = Math.sqrt(dx * dx + dy * dy);
+                return `M${start[0]},${start[1]}A${dr},${dr} 0 0,1 ${end[0]},${end[1]}`;
+            });
+
+        showMigrationFeed(activeArcs);
     }
 
-    function auditLocationFromCountry(locationName) {
-        document.getElementById('hud-coords').textContent = locationName.toUpperCase();
-        const feed = document.getElementById('feed');
+    function auditLocation(d) {
+        const countryName = d.properties.name;
+        d3.select("#hud-coords").text(countryName.toUpperCase());
 
-        feed.innerHTML = `
-            <h3 style="color:var(--accent);">${locationName.toUpperCase()}</h3>
+        d3.select("#feed").html(`
+            <h3 style="color:var(--accent);">${countryName.toUpperCase()}</h3>
             
             <div class="intel-card" style="border-left: 3px solid #ff0;">
                 <h4>[LIVE] GOOGLE NEWS TERMINAL</h4>
-                <p>Track live search updates for ${locationName}.</p>
-                <a href="https://news.google.com/search?q=${encodeURIComponent(locationName)}" target="_blank">LAUNCH LIVE INTERCEPT</a>
+                <p>Track live search updates for ${countryName}.</p>
+                <a href="https://news.google.com/search?q=${encodeURIComponent(countryName)}" target="_blank">LAUNCH LIVE INTERCEPT</a>
             </div>
 
             <div class="intel-card" style="border-left: 3px solid #00ff41;">
                 <h4>[HISTORICAL] WIKIPEDIA ARCHIVE</h4>
                 <p>Analyze historical archives of this area.</p>
-                <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(locationName)}" target="_blank">LAUNCH ENCYCLOPEDIA</a>
+                <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(countryName)}" target="_blank">LAUNCH ENCYCLOPEDIA</a>
             </div>
 
             <div class="intel-card" style="border-left: 3px solid #ff0044;">
                 <h4>[TEMPORAL] TIMELINE PORTAL</h4>
-                <p>Compare this location against year context ${selectedYear}.</p>
-                <a href="https://www.google.com/search?q=${encodeURIComponent(locationName)}+history+year+${selectedYear}" target="_blank">TEMPORAL SEARCH</a>
+                <p>Compare this location against the year ${selectedYear}.</p>
+                <a href="https://www.google.com/search?q=${encodeURIComponent(countryName)}+history+year+${selectedYear}" target="_blank">TEMPORAL SEARCH</a>
             </div>
-        `;
+        `);
     }
 
     function showMigrationFeed(arcs) {
-        const feed = document.getElementById('feed');
-        feed.innerHTML = `<h3 style="color:var(--accent);">MIGRATION LOGS (Up to ${selectedYear})</h3>`;
+        let html = `<h3 style="color:var(--accent);">MIGRATION LOGS (Up to ${selectedYear})</h3>`;
         
         if (arcs.length === 0) {
-            feed.innerHTML += `<div class="intel-card"><p>No major recorded migrations before this era.</p></div>`;
-            return;
+            html += `<div class="intel-card"><p>No major recorded migrations before this era.</p></div>`;
+        } else {
+            arcs.forEach(arc => {
+                const era = arc.year < 0 ? `${Math.abs(arc.year)} BCE` : `${arc.year} CE`;
+                html += `
+                    <div class="intel-card">
+                        <h4>${era}: ${arc.from} -> ${arc.to}</h4>
+                        <p>${arc.text}</p>
+                        <a href="https://www.google.com/search?q=Jewish+migration+history+${encodeURIComponent(arc.from)}+to+${encodeURIComponent(arc.to)}" target="_blank">DECRYPT HISTORY</a>
+                    </div>
+                `;
+            });
         }
-
-        arcs.forEach(arc => {
-            const era = arc.year < 0 ? `${Math.abs(arc.year)} BCE` : `${arc.year} CE`;
-            feed.innerHTML += `
-                <div class="intel-card">
-                    <h4>${era}: ${arc.from} -> ${arc.to}</h4>
-                    <p>${arc.text}</p>
-                    <a href="https://www.google.com/search?q=Jewish+migration+${encodeURIComponent(arc.from)}+${encodeURIComponent(arc.to)}" target="_blank">DECRYPT HISTORY</a>
-                </div>
-            `;
-        });
+        d3.select("#feed").html(html);
     }
 
-    initMap();
+    window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        svg.attr("width", w).attr("height", h);
+        projection.scale(w / 6.3).translate([w / 2.1, h / 1.7]);
+        g.selectAll("path.country").attr("d", path);
+        g.selectAll("text.country-label").attr("transform", d => {
+            const centroid = path.centroid(d);
+            return centroid ? `translate(${centroid[0]},${centroid[1]})` : null;
+        });
+        if (currentMode === 'migration') renderMigrations();
+    });
 </script>
 </body>
 </html>
