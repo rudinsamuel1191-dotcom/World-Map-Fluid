@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>SITREP // GLOBAL HORIZON</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/globe.gl@2.32.2/dist/globe.gl.min.js"></script>
+    <title>SITREP // FLAT HORIZON</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
         
         :root { 
             --bg: #05050a; 
             --accent: #00f2ff; 
-            --panel: rgba(5, 5, 8, 0.95); 
+            --panel: rgba(5, 5, 10, 0.95); 
             --intel: #00ff41; 
             --border: rgba(0, 242, 255, 0.2); 
         }
@@ -22,11 +22,11 @@
             font-family: 'JetBrains Mono', monospace; overflow: hidden; 
         }
 
-        #globe-viz { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: var(--bg); }
 
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
 
-        /* --- THE SLIDING SIDEBAR --- */
+        /* --- Sliding Sidebar --- */
         .sidebar { 
             pointer-events: auto; position: absolute; left: -420px; top: 20px; bottom: 20px; 
             width: 380px; background: var(--panel); border: 1px solid var(--border); 
@@ -35,7 +35,7 @@
             z-index: 20;
         }
 
-        .sidebar.active { transform: translateX(440px); } /* Slides into view */
+        .sidebar.active { transform: translateX(440px); }
 
         .close-btn {
             position: absolute; right: 15px; top: 20px; background: none; border: 1px solid var(--accent);
@@ -51,9 +51,8 @@
 
         .intel-card { 
             background: rgba(255,255,255,0.02); border-left: 3px solid var(--accent); 
-            padding: 15px; margin-bottom: 15px; font-size: 11px; transition: 0.2s; 
+            padding: 15px; margin-bottom: 15px; font-size: 11px; 
         }
-        .intel-card:hover { background: rgba(0, 242, 255, 0.05); }
 
         .intel-card h4 { margin: 0 0 8px 0; color: var(--accent); text-transform: uppercase; font-size: 12px; }
 
@@ -83,16 +82,19 @@
         .t-btn {
             background: #000; color: #fff; border: 1px solid var(--accent);
             font-family: inherit; font-size: 11px; padding: 12px; cursor: pointer;
-            transition: 0.3s; width: 150px; text-align: left;
+            transition: 0.3s; width: 160px; text-align: left;
         }
         .t-btn.active { background: var(--accent); color: #000; font-weight: bold; }
 
         input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+        /* Remove Leaflet attributions to keep it clean */
+        .leaflet-control-attribution { display: none !important; }
     </style>
 </head>
 <body>
 
-<div id="globe-viz"></div>
+<div id="map"></div>
 
 <div class="ui-layer">
     <div class="sidebar" id="sidebar">
@@ -107,17 +109,17 @@
     <div class="hud-stats">
         DATE_MATRIX: <span id="hud-date">2026 CE</span><br>
         SAT_COORD: <span id="hud-coords">SCANNING...</span><br>
-        VISUAL: <span style="color:#0f0">TACTICAL PLANE</span>
+        VISUAL: <span style="color:#0f0">TRUE FLAT PLANE</span>
     </div>
 
     <div class="mode-toggles">
-        <button id="btn-news" class="t-btn active" onclick="setMode('news')">> GENERAL INTEL</button>
+        <button id="btn-news" class="t-btn active" onclick="setMode('news')">> GENERAL NEWS</button>
         <button id="btn-mig" class="t-btn" onclick="setMode('migration')">> JEWISH MIGRATION</button>
     </div>
 
     <div class="timeline-ctrl">
         <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 10px;">
-            <span>HISTORICAL BOUND (-500 BCE)</span>
+            <span>HISTORICAL (-500 BCE)</span>
             <span id="year-display" style="color:var(--accent); font-weight:bold;">2026 CE</span>
             <span>LIVE (PRESENT)</span>
         </div>
@@ -126,66 +128,44 @@
 </div>
 
 <script>
-    let world;
-    let selectedYear = 2026;
+    let map;
     let currentMode = 'news';
+    let selectedYear = 2026;
+    let migrationLayers = [];
 
-    // Static Jewish Migration Nodes
     const migrationArcs = [
-        { from: 'Israel', to: 'Babylon', year: -586, lat1: 31.76, lng1: 35.21, lat2: 32.53, lng2: 44.42, text: "Babylonian Exile" },
-        { from: 'Israel', to: 'Rome', year: 70, lat1: 31.76, lng1: 35.21, lat2: 41.90, lng2: 12.49, text: "Roman Exile (Siege of Jerusalem)" },
-        { from: 'Israel', to: 'Spain', year: 1000, lat1: 31.76, lng1: 35.21, lat2: 40.41, lng2: -3.70, text: "Sephardic Golden Age" },
-        { from: 'Israel', to: 'Poland', year: 1500, lat1: 31.76, lng1: 35.21, lat2: 52.22, lng2: 21.01, text: "Ashkenazi Expansion" },
-        { from: 'Spain', to: 'Ottoman Empire', year: 1492, lat1: 40.41, lng1: -3.70, lat2: 41.00, lng2: 28.97, text: "Expulsion from Spain" },
-        { from: 'Russia', to: 'USA', year: 1881, lat1: 55.75, lng1: 37.61, lat2: 40.71, lng2: -74.00, text: "Pogroms Trigger US Migration" },
-        { from: 'Germany', to: 'Israel', year: 1933, lat1: 52.52, lng1: 13.40, lat2: 31.76, lng2: 35.21, text: "Haavara Agreement" },
-        { from: 'Morocco', to: 'Israel', year: 1950, lat1: 33.57, lng1: -7.58, lat2: 31.76, lng2: 35.21, text: "Mizrahi Exodus" }
+        { from: 'Israel', to: 'Babylon', year: -586, start: [31.76, 35.21], end: [32.53, 44.42], text: "Babylonian Exile" },
+        { from: 'Israel', to: 'Rome', year: 70, start: [31.76, 35.21], end: [41.90, 12.49], text: "Roman Exile (Fall of Jerusalem)" },
+        { from: 'Israel', to: 'Spain', year: 1000, start: [31.76, 35.21], end: [40.41, -3.70], text: "Sephardic Golden Age" },
+        { from: 'Israel', to: 'Poland', year: 1500, start: [31.76, 35.21], end: [52.22, 21.01], text: "Ashkenazi Settlement" },
+        { from: 'Spain', to: 'Turkey', year: 1492, start: [40.41, -3.70], end: [41.01, 28.97], text: "Alhambra Decree Expulsion" },
+        { from: 'Russia', to: 'USA', year: 1881, start: [55.75, 37.61], end: [40.71, -74.00], text: "Pogroms Drive US Migration" },
+        { from: 'Germany', to: 'Israel', year: 1933, start: [52.52, 13.40], end: [31.76, 35.21], text: "Haavara Agreement" },
+        { from: 'Morocco', to: 'Israel', year: 1950, start: [33.57, -7.58], end: [31.76, 35.21], text: "Mizrahi Exodus" }
     ];
 
     function initMap() {
-        world = Globe()(document.getElementById('globe-viz'))
-            .backgroundColor('#05050a')
-            .showAtmosphere(false)
-            .showGraticules(true)
-            .graticuleColor('rgba(0, 242, 255, 0.05)')
-            .onGlobeClick(({ lat, lng }) => {
-                if (currentMode === 'news') {
-                    auditLocation(lat, lng);
-                }
-            });
+        // Initialize Leaflet 2D flat map
+        map = L.map('map', {
+            center: [20, 0],
+            zoom: 2,
+            minZoom: 2,
+            maxZoom: 6,
+            zoomControl: false // Keeps screen clean
+        });
 
-        // Use Flat Preset
-        world.presetCoords({ lat: 0, lng: 0, altitude: 2.2 });
-        world.controls().enableRotate = false; // Force look down
+        // Glowing, high-tech neon carto-tile layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
 
-        // Load glowing Country Outlines and Labels via GeoJSON
-        fetch('https://vasturiano.github.io/globe.gl/example/datasets/ne_110m_admin_0_countries.geojson')
-            .then(res => res.json())
-            .then(countries => {
-                world.polygonsData(countries.features)
-                    .polygonCapColor(() => 'rgba(0, 242, 255, 0.02)')
-                    .polygonSideColor(() => 'rgba(255, 255, 255, 0.05)')
-                    .polygonStrokeColor(() => 'rgba(0, 242, 255, 0.5)')
-                    .onPolygonClick(({ properties: d }) => {
-                        if (currentMode === 'news') {
-                            auditLocationFromCountry(d.ADMIN);
-                        }
-                    });
-
-                // Country Text Labels
-                world.labelsData(countries.features.map(feat => ({
-                    lat: feat.properties.LABEL_Y || 0,
-                    lng: feat.properties.LABEL_X || 0,
-                    text: feat.properties.ADMIN,
-                    size: 0.4,
-                    color: 'rgba(255, 255, 255, 0.4)'
-                })))
-                .labelText(d => d.text)
-                .labelSize(d => d.size)
-                .labelColor(d => d.color);
-            });
-
-        renderMapOverlay();
+        // Map Click Event
+        map.on('click', function(e) {
+            if (currentMode === 'news') {
+                auditLocation(e.latlng.lat, e.latlng.lng);
+            }
+        });
     }
 
     function toggleSidebar(show) {
@@ -207,7 +187,7 @@
         } else {
             toggleSidebar(false);
         }
-        renderMapOverlay();
+        renderMigrations();
     }
 
     function updateYear(val) {
@@ -215,66 +195,78 @@
         const display = selectedYear < 0 ? `${Math.abs(selectedYear)} BCE` : `${selectedYear} CE`;
         document.getElementById('year-display').textContent = display;
         document.getElementById('hud-date').textContent = display;
-        renderMapOverlay();
-    }
-
-    function renderMapOverlay() {
+        
         if (currentMode === 'migration') {
-            const activeArcs = migrationArcs.filter(arc => arc.year <= selectedYear);
-
-            world.arcsData(activeArcs)
-                .arcStartLat(d => d.lat1)
-                .arcStartLng(d => d.lng1)
-                .arcEndLat(d => d.lat2)
-                .arcEndLng(d => d.lng2)
-                .arcColor(() => '#00ff41')
-                .arcDashLength(0.4)
-                .arcDashGap(0.2)
-                .arcDashAnimateTime(2000);
-
-            showMigrationFeed(activeArcs);
-        } else {
-            world.arcsData([]);
+            renderMigrations();
         }
     }
 
+    function renderMigrations() {
+        // Clear old migration lines
+        migrationLayers.forEach(layer => map.removeLayer(layer));
+        migrationLayers = [];
+
+        if (currentMode !== 'migration') return;
+
+        const activeArcs = migrationArcs.filter(arc => arc.year <= selectedYear);
+
+        activeArcs.forEach(arc => {
+            // Draw visual lines for migration trajectories
+            const polyline = L.polyline([arc.start, arc.end], {
+                color: 'var(--intel)',
+                weight: 2,
+                dashArray: '5, 10',
+                opacity: 0.8
+            }).addTo(map);
+
+            // Pulse point at destination
+            const circle = L.circleMarker(arc.end, {
+                color: 'var(--accent)',
+                radius: 5,
+                fillOpacity: 0.8
+            }).addTo(map);
+
+            migrationLayers.push(polyline, circle);
+        });
+
+        showMigrationFeed(activeArcs);
+    }
+
     async function auditLocation(lat, lng) {
+        document.getElementById('hud-coords').textContent = `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+        
         try {
             const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
             const geo = await geoRes.json();
             const city = geo.address.city || geo.address.country || "Neutral Zone";
-            auditLocationFromCountry(city);
+            
+            document.getElementById('sidebar-title').textContent = city.toUpperCase();
+            const feed = document.getElementById('feed');
+
+            toggleSidebar(true); // Pull open sidebar on click
+
+            feed.innerHTML = `
+                <div class="intel-card">
+                    <h4>LIVE GOOGLE NEWS</h4>
+                    <p>Track live search updates and localized news wire feeds for this sector.</p>
+                    <a href="https://news.google.com/search?q=${encodeURIComponent(city)}" target="_blank">OPEN NEWS WIRE</a>
+                </div>
+
+                <div class="intel-card" style="border-left-color: #00ff41;">
+                    <h4>HISTORICAL ARCHIVE</h4>
+                    <p>Access digitized encyclopedia files indexing the geographical history of this zone.</p>
+                    <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(city)}" target="_blank">OPEN WIKI ARCHIVE</a>
+                </div>
+
+                <div class="intel-card" style="border-left-color: #ff0044;">
+                    <h4>CHRONOS SEARCH (YEAR ${selectedYear})</h4>
+                    <p>Investigate timeline logs by pairing current query with timeline parameters.</p>
+                    <a href="https://www.google.com/search?q=${encodeURIComponent(city)}+history+year+${selectedYear}" target="_blank">TEMPORAL SEARCH</a>
+                </div>
+            `;
         } catch(e) {
-            auditLocationFromCountry("Target Area");
+            console.error(e);
         }
-    }
-
-    function auditLocationFromCountry(locationName) {
-        document.getElementById('hud-coords').textContent = locationName.toUpperCase();
-        document.getElementById('sidebar-title').textContent = locationName.toUpperCase();
-        const feed = document.getElementById('feed');
-
-        toggleSidebar(true); // Bring out the hidden sidebar
-
-        feed.innerHTML = `
-            <div class="intel-card">
-                <h4>LIVE GOOGLE NEWS</h4>
-                <p>Launch live satellite intercepts and local news wire feeds.</p>
-                <a href="https://news.google.com/search?q=${encodeURIComponent(locationName)}" target="_blank">OPEN NEWS UPLINK</a>
-            </div>
-
-            <div class="intel-card" style="border-left-color: #00ff41;">
-                <h4>HISTORICAL WIKIPEDIA</h4>
-                <p>Pull deep-history structural files from encyclopedia indexes.</p>
-                <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(locationName)}" target="_blank">OPEN ARCHIVE</a>
-            </div>
-
-            <div class="intel-card" style="border-left-color: #ff0044;">
-                <h4>TEMPORAL TIMELINE FILTER</h4>
-                <p>Correlate this location's state parameters against year ${selectedYear}.</p>
-                <a href="https://www.google.com/search?q=${encodeURIComponent(locationName)}+history+year+${selectedYear}" target="_blank">CHRONOS SEARCH</a>
-            </div>
-        `;
     }
 
     function showMigrationFeed(arcs) {
@@ -283,7 +275,7 @@
         feed.innerHTML = `<h3 style="color:var(--accent); font-size:12px; margin-top:0;">CHRONO-LOGS (UP TO ${selectedYear})</h3>`;
         
         if (arcs.length === 0) {
-            feed.innerHTML += `<div class="intel-card"><p>No recorded anomalies prior to this era segment.</p></div>`;
+            feed.innerHTML += `<div class="intel-card"><p>No recorded movements prior to this timestamp segment.</p></div>`;
             return;
         }
 
